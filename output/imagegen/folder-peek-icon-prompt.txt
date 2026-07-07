@@ -1,0 +1,24 @@
+Use case: logo-brand
+Asset type: Windows desktop app icon, square PNG source for transparent icon asset
+Primary request: Design a clean Windows 11 style app icon for a desktop utility called "Folder Peek".
+
+Core concept:
+A simplified desktop folder opens outward into a lightweight floating preview panel, suggesting "peek inside without fully opening". Communicate quick access, expansion, clarity, and a native system-tool feeling.
+
+Subject:
+A soft warm yellow / muted gold folder on the left. From its right side, a slim translucent glassy blue-white preview panel expands outward, like a lightweight cascade or peek panel. The panel contains only 2-3 subtle abstract horizontal lines or small blocks implying file items.
+
+Style/medium:
+Modern Windows 11 app icon aesthetic, minimal and polished, soft rounded geometry, subtle layered surfaces, gentle highlights, premium but restrained, readable at small sizes, strong silhouette.
+
+Composition/framing:
+Centered composition, square icon, generous padding, no crop. Folder on the left, translucent preview panel expanding to the right, elegant directional motion without looking like a full explorer window.
+
+Color palette:
+Folder in soft warm yellow / muted gold. Panel in light glassy blue-white or cool translucent neutral. Subtle Windows-inspired accent blue allowed. Overall balanced, fresh, calm, and clean.
+
+Transparency workflow:
+Create the icon subject on a perfectly flat solid #00ff00 chroma-key background for background removal. The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation. Keep the icon fully separated from the background with crisp edges and generous padding. Do not use #00ff00 anywhere in the icon.
+
+Constraints:
+No text, no letters, no logo wordmark. No photorealism, no mascot, no busy background, no excessive gradients, no heavy shadows. No watermark. Avoid clutter. Suitable as a Windows app icon.

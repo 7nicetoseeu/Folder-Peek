@@ -1,0 +1,63 @@
+<Window x:Class="FolderPeek.App.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="关于 Folder Peek"
+        Width="460"
+        MinWidth="460"
+        MinHeight="320"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="{DynamicResource PageBackgroundBrush}"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <TextBlock FontSize="24"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Text="Folder Peek" />
+                <TextBlock Margin="0,10,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           Text="一个用手势展开桌面文件夹的小工具。" />
+                <Border Margin="0,16,0,0"
+                        Padding="12"
+                        CornerRadius="8"
+                        BorderBrush="{StaticResource BorderBrushStrong}"
+                        BorderThickness="1"
+                        Background="{DynamicResource SurfaceElevatedBrush}">
+                    <StackPanel>
+                        <TextBlock FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="当前用法" />
+                        <TextBlock Margin="0,8,0,0"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Text="按住 Space，再按住鼠标左键拖动，可以展开桌面文件夹；对面板里的子文件夹继续这样拖动，可以展开下一层。" />
+                        <TextBlock Margin="0,10,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Text="关闭这个窗口后，Folder Peek 仍会继续驻留在托盘里运行。" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Button Grid.Row="1"
+                Width="88"
+                Height="32"
+                Margin="0,14,0,0"
+                HorizontalAlignment="Right"
+                Click="CloseButton_OnClick"
+                Content="知道了" />
+    </Grid>
+</Window>
