@@ -53,6 +53,7 @@
                             <ColumnDefinition Width="4" />
                             <ColumnDefinition Width="12" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <Border Width="4"
@@ -75,6 +76,17 @@
                                        Style="{StaticResource CaptionTextStyle}"
                                        Text="0 个项目" />
                         </StackPanel>
+
+                        <ToggleButton x:Name="PinToggleButton"
+                                      Grid.Column="3"
+                                      Margin="12,0,0,0"
+                                      VerticalAlignment="Top"
+                                      Visibility="Collapsed"
+                                      Style="{StaticResource PanelPinToggleStyle}"
+                                      ToolTip="钉住当前展开栏"
+                                      Checked="PinToggleButton_OnCheckedChanged"
+                                      Unchecked="PinToggleButton_OnCheckedChanged"
+                                      Content="&#xE718;" />
                     </Grid>
                 </Border>
 
@@ -119,6 +131,7 @@
                               Visibility="Collapsed"
                               Style="{StaticResource PanelListViewStyle}"
                               PreviewMouseLeftButtonDown="ItemList_OnPreviewMouseLeftButtonDown"
+                              PreviewMouseMove="ItemList_OnPreviewMouseMove"
                               PreviewMouseLeftButtonUp="ItemList_OnPreviewMouseLeftButtonUp">
                         <ListView.Resources>
                             <Style TargetType="ScrollBar" BasedOn="{StaticResource PanelScrollBarStyle}" />

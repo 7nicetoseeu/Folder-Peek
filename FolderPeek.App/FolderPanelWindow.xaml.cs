@@ -1,3 +1,5 @@
+using System.Collections.Specialized;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,6 +25,8 @@ public partial class FolderPanelWindow : Window
     private DispatcherTimer? _noticeTimer;
     private System.Windows.Point? _mouseDownPoint;
     private FolderPanelItem? _mouseDownItem;
+    private bool _suppressMouseUpAction;
+    private bool _isPinStateSyncing;
 
     public FolderPanelWindow()
     {
@@ -40,6 +44,8 @@ public partial class FolderPanelWindow : Window
     public event EventHandler<string>? FileRequested;
 
     public event EventHandler<PanelFolderHit>? FolderRequested;
+
+    public event EventHandler<PanelPinnedChangedEventArgs>? PinStateChanged;
 
     public void SetVisibleItemLimit(int visibleItemLimit)
     {
@@ -115,6 +121,23 @@ public partial class FolderPanelWindow : Window
         _noticeTimer.Tick -= NoticeTimer_OnTick;
         _noticeTimer.Tick += NoticeTimer_OnTick;
         _noticeTimer.Start();
+    }
+
+    public void SetPinState(bool isVisible, bool isPinned)
+    {
+        EnsureControlsInitialized();
+
+        _isPinStateSyncing = true;
+        try
+        {
+            PinToggleButton.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+            PinToggleButton.IsChecked = isPinned;
+            PinToggleButton.ToolTip = isPinned ? "取消钉住当前展开栏" : "钉住当前展开栏";
+        }
+        finally
+        {
+            _isPinStateSyncing = false;
+        }
     }
 
     public double GetPreferredWindowHeight()
@@ -283,17 +306,65 @@ public partial class FolderPanelWindow : Window
 
     private void ItemList_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _suppressMouseUpAction = false;
         _mouseDownPoint = e.GetPosition(ItemList);
         _mouseDownItem = ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is System.Windows.Controls.ListViewItem container
             ? container.DataContext as FolderPanelItem
             : null;
     }
 
+    private void ItemList_OnPreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed ||
+            _mouseDownPoint is null ||
+            _mouseDownItem is null ||
+            _mouseDownItem.IsFolder ||
+            IsSpacePressed())
+        {
+            return;
+        }
+
+        var currentPoint = e.GetPosition(ItemList);
+        var deltaX = currentPoint.X - _mouseDownPoint.Value.X;
+        var deltaY = currentPoint.Y - _mouseDownPoint.Value.Y;
+        if (Math.Abs(deltaX) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(deltaY) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        if (ItemList.ItemContainerGenerator.ContainerFromItem(_mouseDownItem) is not System.Windows.Controls.ListViewItem container)
+        {
+            ResetPointerInteraction();
+            return;
+        }
+
+        var dataObject = new System.Windows.DataObject();
+        var files = new StringCollection
+        {
+            _mouseDownItem.FullPath
+        };
+        dataObject.SetFileDropList(files);
+
+        _suppressMouseUpAction = true;
+        DragDrop.DoDragDrop(container, dataObject, System.Windows.DragDropEffects.Copy);
+        ResetPointerInteraction();
+        e.Handled = true;
+    }
+
     private void ItemList_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_suppressMouseUpAction)
+        {
+            ResetPointerInteraction();
+            e.Handled = true;
+            return;
+        }
+
         if (ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is not System.Windows.Controls.ListViewItem container ||
             container.DataContext is not FolderPanelItem item)
         {
+            ResetPointerInteraction();
             return;
         }
 
@@ -303,16 +374,30 @@ public partial class FolderPanelWindow : Window
         {
             if (!IsClickRelease(e, item))
             {
+                ResetPointerInteraction();
                 return;
             }
 
             e.Handled = true;
             FolderRequested?.Invoke(this, CreatePanelFolderHit(container, item));
+            ResetPointerInteraction();
             return;
         }
 
         e.Handled = true;
         FileRequested?.Invoke(this, item.FullPath);
+        ResetPointerInteraction();
+    }
+
+    private void PinToggleButton_OnCheckedChanged(object sender, RoutedEventArgs e)
+    {
+        if (_isPinStateSyncing || PinToggleButton.IsChecked is not bool isPinned)
+        {
+            return;
+        }
+
+        PinToggleButton.ToolTip = isPinned ? "取消钉住当前展开栏" : "钉住当前展开栏";
+        PinStateChanged?.Invoke(this, new PanelPinnedChangedEventArgs(isPinned));
     }
 
     private void NoticeCloseButton_OnClick(object sender, RoutedEventArgs e)
@@ -340,6 +425,13 @@ public partial class FolderPanelWindow : Window
         return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY)) <= SystemParameters.MinimumHorizontalDragDistance;
     }
 
+    private void ResetPointerInteraction()
+    {
+        _mouseDownPoint = null;
+        _mouseDownItem = null;
+        _suppressMouseUpAction = false;
+    }
+
     private void EnsureControlsInitialized()
     {
         if (FolderNameText is null ||
@@ -351,6 +443,7 @@ public partial class FolderPanelWindow : Window
             StatusDetailText is null ||
             LoadingBar is null ||
             ChromeTransform is null ||
+            PinToggleButton is null ||
             NoticeBanner is null ||
             NoticeTitleText is null ||
             NoticeDetailText is null)
@@ -442,6 +535,11 @@ public partial class FolderPanelWindow : Window
         return null;
     }
 
+    private static bool IsSpacePressed()
+    {
+        return (GetAsyncKeyState(VkSpace) & 0x8000) != 0;
+    }
+
     private static System.Windows.Point ResolveOffset(GestureDirection direction, bool isClosing)
     {
         var distance = isClosing ? AnimationOffset * 0.7 : AnimationOffset;
@@ -455,5 +553,10 @@ public partial class FolderPanelWindow : Window
             _ => new System.Windows.Point(0, 0)
         };
     }
+
+    private const int VkSpace = 0x20;
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
 
 }

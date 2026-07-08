@@ -8,7 +8,7 @@ using System.Windows.Media.Imaging;
 
 namespace FolderPeek.App;
 
-public sealed class ShellIconProvider
+public sealed class ShellIconProvider : IFolderItemIconProvider
 {
     private const uint FileAttributeDirectory = 0x10;
     private const uint FileAttributeNormal = 0x80;

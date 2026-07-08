@@ -1,4 +1,3 @@
-using System.IO;
 using System.Collections.Concurrent;
 
 namespace FolderPeek.App;
@@ -7,46 +6,71 @@ public sealed class FolderContentProvider
 {
     private static readonly TimeSpan PrewarmCacheLifetime = TimeSpan.FromSeconds(12);
 
-    private readonly ShellIconProvider _iconProvider;
+    private readonly IFolderItemIconProvider _iconProvider;
+    private readonly FolderIndexCacheService _cacheService;
+    private readonly IFolderSnapshotSource _snapshotSource;
+    private readonly Action<string>? _log;
+    private readonly Func<DateTime> _utcNow;
     private readonly ConcurrentDictionary<string, CachedFolderItems> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Task> _prewarmTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlyList<FolderPanelItem>>>> _inflightLoads = new(StringComparer.OrdinalIgnoreCase);
 
-    public FolderContentProvider(ShellIconProvider iconProvider)
+    public FolderContentProvider(ShellIconProvider iconProvider, Action<string>? log = null)
+        : this(iconProvider, cacheService: null, snapshotSource: null, log: log, utcNow: null)
     {
-        _iconProvider = iconProvider;
     }
 
-    public Task<IReadOnlyList<FolderPanelItem>> GetItemsAsync(string folderPath, CancellationToken cancellationToken = default)
+    internal FolderContentProvider(
+        IFolderItemIconProvider iconProvider,
+        FolderIndexCacheService? cacheService,
+        IFolderSnapshotSource? snapshotSource,
+        Action<string>? log,
+        Func<DateTime>? utcNow)
     {
-        if (TryGetCachedItems(folderPath, out var cachedItems))
+        _iconProvider = iconProvider;
+        _cacheService = cacheService ?? new FolderIndexCacheService(log);
+        _snapshotSource = snapshotSource ?? new FileSystemFolderSnapshotSource();
+        _log = log;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
+    }
+
+    public async Task<IReadOnlyList<FolderPanelItem>> GetItemsAsync(string folderPath, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = FolderIndexCacheService.NormalizePath(folderPath);
+        if (TryGetCachedItems(normalizedPath, out var cachedItems))
         {
-            return Task.FromResult(cachedItems);
+            return cachedItems;
         }
 
-        return Task.Run(() => GetItems(folderPath, cancellationToken), cancellationToken);
+        var loadTask = GetOrCreateLoadTask(normalizedPath);
+        return await loadTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public void Prewarm(string folderPath)
     {
-        if (string.IsNullOrWhiteSpace(folderPath) || TryGetCachedItems(folderPath, out _))
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return;
+        }
+
+        var normalizedPath = FolderIndexCacheService.NormalizePath(folderPath);
+        if (TryGetCachedItems(normalizedPath, out _))
         {
             return;
         }
 
         _ = _prewarmTasks.GetOrAdd(
-            folderPath,
-            static (path, state) => Task.Run(() =>
+            normalizedPath,
+            static (path, state) => Task.Run(async () =>
             {
                 var provider = state!;
 
                 try
                 {
-                    var items = provider.GetItems(path, CancellationToken.None);
-                    provider._cache[path] = new CachedFolderItems(items, DateTime.UtcNow);
+                    await provider.GetOrCreateLoadTask(path).ConfigureAwait(false);
                 }
                 catch
                 {
-                    // 预热失败不影响正常展开，真正展开时再走正式读取链路。
                 }
                 finally
                 {
@@ -56,55 +80,72 @@ public sealed class FolderContentProvider
             this);
     }
 
-    private IReadOnlyList<FolderPanelItem> GetItems(string folderPath, CancellationToken cancellationToken)
+    private Task<IReadOnlyList<FolderPanelItem>> GetOrCreateLoadTask(string normalizedPath)
     {
-        var directory = new DirectoryInfo(folderPath);
-        if (!directory.Exists)
-        {
-            throw new DirectoryNotFoundException($"找不到文件夹：{folderPath}");
-        }
+        var lazyTask = _inflightLoads.GetOrAdd(
+            normalizedPath,
+            path => new Lazy<Task<IReadOnlyList<FolderPanelItem>>>(
+                () => LoadItemsAsync(path),
+                LazyThreadSafetyMode.ExecutionAndPublication));
 
-        var items = new List<FolderPanelItem>();
-
-        foreach (var childDirectory in directory.EnumerateDirectories())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ShouldSkip(childDirectory.Attributes))
+        var task = lazyTask.Value;
+        _ = task.ContinueWith(
+            (_, state) =>
             {
-                continue;
+                var provider = (FolderContentProvider)state!;
+                if (provider._inflightLoads.TryGetValue(normalizedPath, out var current) &&
+                    ReferenceEquals(current, lazyTask))
+                {
+                    provider._inflightLoads.TryRemove(normalizedPath, out var _);
+                }
+            },
+            this,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        return task;
+    }
+
+    private Task<IReadOnlyList<FolderPanelItem>> LoadItemsAsync(string normalizedPath)
+    {
+        return Task.Run(() =>
+        {
+            if (TryGetCachedItems(normalizedPath, out var memoryCachedItems))
+            {
+                return memoryCachedItems;
             }
 
-            items.Add(new FolderPanelItem(
-                childDirectory.Name,
-                childDirectory.FullName,
-                true,
-                _iconProvider.GetFolderIcon(),
-                "文件夹"));
-        }
+            var directoryLastWriteTimeUtc = _snapshotSource.GetDirectoryLastWriteTimeUtc(normalizedPath);
+            var cacheReadResult = _cacheService.TryReadSnapshot(normalizedPath, directoryLastWriteTimeUtc);
 
-        foreach (var file in directory.EnumerateFiles())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ShouldSkip(file.Attributes))
+            switch (cacheReadResult.Status)
             {
-                continue;
+                case FolderIndexCacheReadStatus.Hit when cacheReadResult.Snapshot is not null:
+                    _log?.Invoke($"cache-hit: {normalizedPath}");
+                    return CacheSnapshotItems(normalizedPath, cacheReadResult.Snapshot.Items);
+                case FolderIndexCacheReadStatus.Missing:
+                    _log?.Invoke($"cache-miss: {normalizedPath}");
+                    break;
+                case FolderIndexCacheReadStatus.Stale:
+                    _log?.Invoke($"cache-stale: {normalizedPath}");
+                    break;
+                case FolderIndexCacheReadStatus.Invalid:
+                    _log?.Invoke($"cache-read-failed: {normalizedPath} ({cacheReadResult.Detail})");
+                    break;
             }
 
-            items.Add(new FolderPanelItem(
-                file.Name,
-                file.FullName,
-                false,
-                _iconProvider.GetFileIcon(file.FullName),
-                ResolveFileKind(file.Extension)));
-        }
+            var itemData = _snapshotSource.ReadItems(normalizedPath, CancellationToken.None);
+            var refreshedLastWriteTimeUtc = _snapshotSource.GetDirectoryLastWriteTimeUtc(normalizedPath);
+            var items = CacheSnapshotItems(normalizedPath, itemData);
 
-        var result = items
-            .OrderByDescending(item => item.IsFolder)
-            .ThenBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
+            _log?.Invoke($"cache-rebuild: {normalizedPath}");
+            _ = _cacheService.WriteSnapshotAsync(
+                new FolderIndexSnapshot(normalizedPath, refreshedLastWriteTimeUtc, itemData, _utcNow()),
+                CancellationToken.None);
 
-        _cache[folderPath] = new CachedFolderItems(result, DateTime.UtcNow);
-        return result;
+            return items;
+        });
     }
 
     private bool TryGetCachedItems(string folderPath, out IReadOnlyList<FolderPanelItem> items)
@@ -126,19 +167,19 @@ public sealed class FolderContentProvider
         return true;
     }
 
-    private static bool ShouldSkip(FileAttributes attributes)
+    private IReadOnlyList<FolderPanelItem> CacheSnapshotItems(string folderPath, IReadOnlyList<FolderIndexItemData> itemData)
     {
-        return attributes.HasFlag(FileAttributes.Hidden) || attributes.HasFlag(FileAttributes.System);
-    }
+        var items = itemData
+            .Select(item => new FolderPanelItem(
+                item.DisplayName,
+                item.FullPath,
+                item.IsFolder,
+                item.IsFolder ? _iconProvider.GetFolderIcon() : _iconProvider.GetFileIcon(item.FullPath),
+                item.SecondaryText))
+            .ToArray();
 
-    private static string ResolveFileKind(string extension)
-    {
-        if (string.IsNullOrWhiteSpace(extension))
-        {
-            return "文件";
-        }
-
-        return $"{extension.ToUpperInvariant()} 文件";
+        _cache[folderPath] = new CachedFolderItems(items, DateTime.UtcNow);
+        return items;
     }
 
     private sealed record CachedFolderItems(IReadOnlyList<FolderPanelItem> Items, DateTime CreatedAtUtc);

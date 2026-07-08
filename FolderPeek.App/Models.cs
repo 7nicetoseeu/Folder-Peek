@@ -59,6 +59,16 @@ public sealed class PanelCloseRequestEventArgs : EventArgs
     public PanelCloseReason Reason { get; }
 }
 
+public sealed class PanelPinnedChangedEventArgs : EventArgs
+{
+    public PanelPinnedChangedEventArgs(bool isPinned)
+    {
+        IsPinned = isPinned;
+    }
+
+    public bool IsPinned { get; }
+}
+
 public sealed record DesktopFolderHit(string DisplayName, string FullPath, string Source, Rect Bounds);
 
 public sealed record PanelFolderHit(FolderPanelItem Item, Rect Bounds, int Level);

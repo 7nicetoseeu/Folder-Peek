@@ -24,6 +24,7 @@ public sealed class PanelManager : IDisposable
 
     private CancellationTokenSource? _loadCts;
     private long _loadVersion;
+    private bool _isPinned;
 
     public bool HasActivePanel => _panelStack.Count > 0;
 
@@ -33,7 +34,7 @@ public sealed class PanelManager : IDisposable
         _settingsService = settingsService;
         _settingsService.PanelVisibleItemCountChanged += SettingsService_OnPanelVisibleItemCountChanged;
         var iconProvider = new ShellIconProvider();
-        _contentProvider = new FolderContentProvider(iconProvider);
+        _contentProvider = new FolderContentProvider(iconProvider, _debugWindow.AddLog);
         _shellLauncher = new ShellLauncher();
     }
 
@@ -75,12 +76,19 @@ public sealed class PanelManager : IDisposable
         }
 
         _debugWindow.AddLog($"关闭全部展开面板。原因：{DescribeCloseReason(reason)}");
+        if (ShouldBlockClose(reason))
+        {
+            ShowPinnedNotice(reason);
+            return;
+        }
+
         foreach (var context in _panelStack.OrderByDescending(item => item.Level).ToArray())
         {
             ClosePanelContext(context);
         }
 
         _panelStack.Clear();
+        _isPinned = false;
     }
 
     public void Dispose()
@@ -190,6 +198,7 @@ public sealed class PanelManager : IDisposable
             panel.CloseRequested += OnPanelCloseRequested;
             panel.FileRequested += OnPanelFileRequested;
             panel.FolderRequested += OnPanelFolderRequested;
+            panel.PinStateChanged += OnPanelPinStateChanged;
             panel.Closed += OnPanelClosed;
 
             var context = new PanelContext(level, parentLevel, parentItem, panel);
@@ -199,6 +208,8 @@ public sealed class PanelManager : IDisposable
             {
                 parentContext!.Window.SetExpandedItem(parentItem);
             }
+
+            SyncPinStateToPanels();
 
             panel.Show();
             panel.BeginShowAnimation(direction);
@@ -248,6 +259,20 @@ public sealed class PanelManager : IDisposable
         CloseAll(e.Reason);
     }
 
+    private void OnPanelPinStateChanged(object? sender, PanelPinnedChangedEventArgs e)
+    {
+        _isPinned = e.IsPinned;
+        SyncPinStateToPanels();
+
+        if (sender is FolderPanelWindow panel)
+        {
+            panel.ShowTransientNotice(
+                e.IsPinned ? "已钉住展开栏" : "已取消钉住",
+                e.IsPinned ? "点击外部、按 Esc 或打开文件后都不会自动关闭。" : "展开栏已恢复默认关闭行为。");
+            panel.Activate();
+        }
+    }
+
     private void SettingsService_OnPanelVisibleItemCountChanged(object? sender, EventArgs e)
     {
         foreach (var context in _panelStack)
@@ -262,7 +287,14 @@ public sealed class PanelManager : IDisposable
         {
             _debugWindow.AddLog($"已打开文件：{fullPath}");
             _debugWindow.AddActivity($"已打开文件：{Path.GetFileName(fullPath)}");
-            CloseAll(PanelCloseReason.FileOpened);
+            if (_isPinned)
+            {
+                ShowPinnedNotice(PanelCloseReason.FileOpened);
+            }
+            else
+            {
+                CloseAll(PanelCloseReason.FileOpened);
+            }
             return;
         }
 
@@ -308,6 +340,12 @@ public sealed class PanelManager : IDisposable
         }
 
         ClosePanelsFromLevel(context.Level + 1);
+        if (_panelStack.Count == 0)
+        {
+            _isPinned = false;
+        }
+
+        SyncPinStateToPanels();
     }
 
     private void ClosePanelsAfterLevel(int level)
@@ -319,6 +357,8 @@ public sealed class PanelManager : IDisposable
         {
             context!.Window.ClearExpandedState();
         }
+
+        SyncPinStateToPanels();
     }
 
     private void ClosePanelsFromLevel(int startLevel)
@@ -330,6 +370,11 @@ public sealed class PanelManager : IDisposable
         {
             _panelStack.Remove(context);
             ClosePanelContext(context);
+        }
+
+        if (_panelStack.Count == 0)
+        {
+            _isPinned = false;
         }
     }
 
@@ -349,6 +394,7 @@ public sealed class PanelManager : IDisposable
         panel.CloseRequested -= OnPanelCloseRequested;
         panel.FileRequested -= OnPanelFileRequested;
         panel.FolderRequested -= OnPanelFolderRequested;
+        panel.PinStateChanged -= OnPanelPinStateChanged;
         panel.Closed -= OnPanelClosed;
     }
 
@@ -383,6 +429,38 @@ public sealed class PanelManager : IDisposable
         return _panelStack.Any(item => ReferenceEquals(item.Window, panel));
     }
 
+    private bool ShouldBlockClose(PanelCloseReason reason)
+    {
+        return _isPinned && reason is PanelCloseReason.LostFocus or PanelCloseReason.EscapeKey or PanelCloseReason.FileOpened;
+    }
+
+    private void ShowPinnedNotice(PanelCloseReason reason)
+    {
+        var context = _panelStack.OrderByDescending(item => item.Level).FirstOrDefault();
+        if (context is null)
+        {
+            return;
+        }
+
+        context.Window.ShowTransientNotice("当前已钉住", DescribePinnedBlockReason(reason));
+        context.Window.Activate();
+        _debugWindow.AddLog($"已拦截关闭请求：{DescribeCloseReason(reason)}");
+    }
+
+    private void SyncPinStateToPanels()
+    {
+        if (_panelStack.Count == 0)
+        {
+            return;
+        }
+
+        var deepestLevel = _panelStack.Max(item => item.Level);
+        foreach (var context in _panelStack)
+        {
+            context.Window.SetPinState(context.Level == deepestLevel, _isPinned);
+        }
+    }
+
     private static string DescribeCloseReason(PanelCloseReason reason)
     {
         return reason switch
@@ -396,6 +474,17 @@ public sealed class PanelManager : IDisposable
             PanelCloseReason.AppExit => "应用退出时关闭",
             PanelCloseReason.Dispose => "应用释放资源时关闭",
             _ => "未标记原因"
+        };
+    }
+
+    private static string DescribePinnedBlockReason(PanelCloseReason reason)
+    {
+        return reason switch
+        {
+            PanelCloseReason.LostFocus => "点击外部不会关闭。先取消钉住，再点面板外部即可收起。",
+            PanelCloseReason.EscapeKey => "当前展开栏已钉住。先取消钉住，再按 Esc 关闭。",
+            PanelCloseReason.FileOpened => "文件已经打开，但当前展开栏保持展开。先取消钉住后才会恢复自动收起。",
+            _ => "当前展开栏已钉住。先取消钉住后才能自动关闭。"
         };
     }
 

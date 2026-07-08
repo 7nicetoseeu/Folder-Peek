@@ -12,6 +12,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _isSyncingThemeSelection;
     private bool _isSyncingBehaviorSelection;
+    private bool _isBehaviorControlsInitialized;
 
     public MainWindow(AppThemeService themeService, AppSettingsService settingsService)
     {
@@ -26,6 +27,7 @@ public partial class MainWindow : Window
         SetHookState(false);
         SyncThemeControls();
         SyncBehaviorControls();
+        _isBehaviorControlsInitialized = true;
         ResetGesture();
     }
 
@@ -199,7 +201,8 @@ public partial class MainWindow : Window
 
     private void PanelVisibleItemCountSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_isSyncingBehaviorSelection ||
+        if (!_isBehaviorControlsInitialized ||
+            _isSyncingBehaviorSelection ||
             PanelVisibleItemCountSlider is null)
         {
             return;

@@ -12,6 +12,7 @@ NuGet/Migrations/
 
 # Local artifacts and packages
 .artifacts/
+output/release/
 FolderPeek.Installer/Payload/
 
 # User-local runtime settings

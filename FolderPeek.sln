@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FolderPeek.App", "FolderPeek.App\FolderPeek.App.csproj", "{C4533E86-0112-42C0-A253-BAABAFA4ECB6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FolderPeek.App.Tests", "FolderPeek.App.Tests\FolderPeek.App.Tests.csproj", "{73B87E6F-1A67-4A42-A4BE-37F6B4E6C70D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{C4533E86-0112-42C0-A253-BAABAFA4ECB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C4533E86-0112-42C0-A253-BAABAFA4ECB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C4533E86-0112-42C0-A253-BAABAFA4ECB6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{73B87E6F-1A67-4A42-A4BE-37F6B4E6C70D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{73B87E6F-1A67-4A42-A4BE-37F6B4E6C70D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{73B87E6F-1A67-4A42-A4BE-37F6B4E6C70D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{73B87E6F-1A67-4A42-A4BE-37F6B4E6C70D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
