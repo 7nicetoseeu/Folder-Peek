@@ -18,7 +18,6 @@ public interface IThemePaletteProvider
 public sealed class AppThemeService : IDisposable
 {
     private const string PersonalizeRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-    private const string SettingsFileName = "FolderPeek.theme.json";
 
     private readonly System.Windows.Application _application;
     private readonly string _settingsPath;
@@ -27,7 +26,7 @@ public sealed class AppThemeService : IDisposable
     public AppThemeService(System.Windows.Application application)
     {
         _application = application;
-        _settingsPath = Path.Combine(AppContext.BaseDirectory, SettingsFileName);
+        _settingsPath = AppStoragePaths.GetThemeFilePath();
 
         CurrentMode = LoadSettings().ThemeMode;
 
@@ -192,6 +191,7 @@ public sealed class AppThemeService : IDisposable
     {
         try
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
             var settings = new ThemeSettingsFile
             {
                 ThemeMode = CurrentMode.ToString()

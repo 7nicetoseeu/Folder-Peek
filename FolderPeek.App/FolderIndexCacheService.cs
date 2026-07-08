@@ -28,7 +28,7 @@ internal sealed class FolderIndexCacheService
         Func<DateTime>? utcNow = null,
         bool scheduleStartupCleanup = true)
     {
-        _cacheRootPath = cacheRootPath ?? Path.Combine(AppContext.BaseDirectory, "cache", "folder-index");
+        _cacheRootPath = cacheRootPath ?? AppStoragePaths.GetFolderIndexCacheRootPath();
         _log = log;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
 

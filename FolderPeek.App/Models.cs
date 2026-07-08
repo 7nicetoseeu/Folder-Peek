@@ -45,6 +45,13 @@ public enum PanelCloseReason
     Dispose
 }
 
+public enum PanelPinMode
+{
+    None,
+    PinnedToDesktop,
+    PinnedTopmost
+}
+
 public sealed record GlobalMouseEventArgs(MouseActionType ActionType, int X, int Y);
 
 public sealed record GlobalKeyEventArgs(int VirtualKey);
@@ -61,17 +68,35 @@ public sealed class PanelCloseRequestEventArgs : EventArgs
 
 public sealed class PanelPinnedChangedEventArgs : EventArgs
 {
-    public PanelPinnedChangedEventArgs(bool isPinned)
+    public PanelPinnedChangedEventArgs(PanelPinMode pinMode)
     {
-        IsPinned = isPinned;
+        PinMode = pinMode;
     }
 
-    public bool IsPinned { get; }
+    public PanelPinMode PinMode { get; }
 }
 
 public sealed record DesktopFolderHit(string DisplayName, string FullPath, string Source, Rect Bounds);
 
-public sealed record PanelFolderHit(FolderPanelItem Item, Rect Bounds, int Level);
+public sealed record PanelFolderHit(FolderPanelItem Item, Rect Bounds, int Level, Guid PanelId);
+
+internal static class PanelPinModeExtensions
+{
+    public static PanelPinMode GetNextPinMode(this PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.None => PanelPinMode.PinnedToDesktop,
+            PanelPinMode.PinnedToDesktop => PanelPinMode.PinnedTopmost,
+            _ => PanelPinMode.None
+        };
+    }
+
+    public static bool IsPinned(this PanelPinMode pinMode)
+    {
+        return pinMode != PanelPinMode.None;
+    }
+}
 
 public sealed class FolderPanelItem : INotifyPropertyChanged
 {

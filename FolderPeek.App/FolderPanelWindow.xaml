@@ -14,7 +14,7 @@
         AllowsTransparency="True"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
-        Topmost="True"
+        Topmost="False"
         Background="Transparent"
         Opacity="0"
         UseLayoutRounding="True"
@@ -43,11 +43,13 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Border Padding="16,14,16,12"
+                <Border x:Name="TitleBarBorder"
+                        Padding="16,14,16,12"
                         BorderBrush="{DynamicResource PanelDividerBrush}"
                         BorderThickness="0,0,0,1"
                         Background="{DynamicResource PanelHeaderBrush}"
-                        CornerRadius="14,14,0,0">
+                        CornerRadius="14,14,0,0"
+                        MouseLeftButtonDown="TitleBarBorder_OnMouseLeftButtonDown">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="4" />
@@ -77,16 +79,24 @@
                                        Text="0 个项目" />
                         </StackPanel>
 
-                        <ToggleButton x:Name="PinToggleButton"
-                                      Grid.Column="3"
-                                      Margin="12,0,0,0"
-                                      VerticalAlignment="Top"
-                                      Visibility="Collapsed"
-                                      Style="{StaticResource PanelPinToggleStyle}"
-                                      ToolTip="钉住当前展开栏"
-                                      Checked="PinToggleButton_OnCheckedChanged"
-                                      Unchecked="PinToggleButton_OnCheckedChanged"
-                                      Content="&#xE718;" />
+                        <Button x:Name="PinToggleButton"
+                                Grid.Column="3"
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Top"
+                                Visibility="Collapsed"
+                                Style="{StaticResource PanelPinToggleStyle}"
+                                ToolTip="钉住当前展开栏"
+                                Click="PinToggleButton_OnClick">
+                            <TextBlock x:Name="PinGlyphText"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="14"
+                                       Text="&#xE718;"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform />
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                        </Button>
                     </Grid>
                 </Border>
 

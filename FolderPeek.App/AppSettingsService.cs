@@ -10,7 +10,6 @@ public sealed class AppSettingsService
     public const int MaxPanelVisibleItemCount = 20;
     public const int DefaultPanelVisibleItemCount = 10;
 
-    private const string SettingsFileName = "FolderPeek.settings.json";
     private const string StartupRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupEntryName = "Folder Peek";
 
@@ -18,7 +17,7 @@ public sealed class AppSettingsService
 
     public AppSettingsService()
     {
-        _settingsPath = Path.Combine(AppContext.BaseDirectory, SettingsFileName);
+        _settingsPath = AppStoragePaths.GetSettingsFilePath();
         var settings = LoadSettings();
         ShowTrayTips = settings.ShowTrayTips;
         PanelVisibleItemCount = settings.PanelVisibleItemCount;
@@ -123,6 +122,7 @@ public sealed class AppSettingsService
     {
         try
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
             var settings = new AppSettingsFile
             {
                 ShowTrayTips = ShowTrayTips,

@@ -7,6 +7,11 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
+using WpfListViewItem = System.Windows.Controls.ListViewItem;
+using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
+using WpfPoint = System.Windows.Point;
 
 namespace FolderPeek.App;
 
@@ -23,17 +28,19 @@ public partial class FolderPanelWindow : Window
     private GestureDirection _lastAnimationDirection = GestureDirection.Right;
     private bool _closeAnimationStarted;
     private DispatcherTimer? _noticeTimer;
-    private System.Windows.Point? _mouseDownPoint;
+    private WpfPoint? _mouseDownPoint;
     private FolderPanelItem? _mouseDownItem;
     private bool _suppressMouseUpAction;
-    private bool _isPinStateSyncing;
+    private PanelPinMode _currentPinMode = PanelPinMode.None;
+    private bool _canDragWindow;
 
     public FolderPanelWindow()
     {
         InitializeComponent();
-
         Loaded += (_, _) => ItemList?.Focus();
     }
+
+    public Guid PanelId { get; set; }
 
     public int Level { get; set; }
 
@@ -123,21 +130,19 @@ public partial class FolderPanelWindow : Window
         _noticeTimer.Start();
     }
 
-    public void SetPinState(bool isVisible, bool isPinned)
+    public void SetPinState(bool isVisible, PanelPinMode pinMode, bool canDragWindow)
     {
         EnsureControlsInitialized();
 
-        _isPinStateSyncing = true;
-        try
-        {
-            PinToggleButton.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
-            PinToggleButton.IsChecked = isPinned;
-            PinToggleButton.ToolTip = isPinned ? "取消钉住当前展开栏" : "钉住当前展开栏";
-        }
-        finally
-        {
-            _isPinStateSyncing = false;
-        }
+        _currentPinMode = pinMode;
+        _canDragWindow = canDragWindow;
+        PinToggleButton.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+        PinToggleButton.ToolTip = BuildPinTooltip(pinMode);
+        PinToggleButton.Background = ResolvePinBackground(pinMode);
+        PinToggleButton.BorderBrush = ResolvePinBorderBrush(pinMode);
+        PinToggleButton.Foreground = ResolvePinForeground(pinMode);
+        PinGlyphText.RenderTransform = new RotateTransform(ResolvePinRotation(pinMode));
+        TitleBarBorder.Cursor = canDragWindow ? System.Windows.Input.Cursors.SizeAll : System.Windows.Input.Cursors.Arrow;
     }
 
     public double GetPreferredWindowHeight()
@@ -202,23 +207,23 @@ public partial class FolderPanelWindow : Window
                 return false;
             }
 
-            var point = PointFromScreen(new System.Windows.Point(screenX, screenY));
+            var point = PointFromScreen(new WpfPoint(screenX, screenY));
             if (point.X < 0 || point.Y < 0 || point.X > ActualWidth || point.Y > ActualHeight)
             {
                 return false;
             }
 
             if (InputHitTest(point) is not DependencyObject target ||
-                ItemsControl.ContainerFromElement(ItemList, target) is not System.Windows.Controls.ListViewItem container ||
+                ItemsControl.ContainerFromElement(ItemList, target) is not WpfListViewItem container ||
                 container.DataContext is not FolderPanelItem item ||
                 !item.IsFolder)
             {
                 return false;
             }
 
-            var topLeft = container.PointToScreen(new System.Windows.Point(0, 0));
-            var bottomRight = container.PointToScreen(new System.Windows.Point(container.ActualWidth, container.ActualHeight));
-            hit = new PanelFolderHit(item, new Rect(topLeft, bottomRight), Level);
+            var topLeft = container.PointToScreen(new WpfPoint(0, 0));
+            var bottomRight = container.PointToScreen(new WpfPoint(container.ActualWidth, container.ActualHeight));
+            hit = new PanelFolderHit(item, new Rect(topLeft, bottomRight), Level, PanelId);
             return true;
         }
         catch
@@ -293,7 +298,7 @@ public partial class FolderPanelWindow : Window
         });
     }
 
-    private void Window_OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void Window_OnKeyDown(object sender, WpfKeyEventArgs e)
     {
         if (e.Key != Key.Escape)
         {
@@ -304,16 +309,38 @@ public partial class FolderPanelWindow : Window
         CloseRequested?.Invoke(this, new PanelCloseRequestEventArgs(PanelCloseReason.EscapeKey));
     }
 
+    private void TitleBarBorder_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_canDragWindow || e.ButtonState != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (FindAncestor<System.Windows.Controls.Primitives.ButtonBase>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            DragMove();
+            e.Handled = true;
+        }
+        catch
+        {
+        }
+    }
+
     private void ItemList_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _suppressMouseUpAction = false;
         _mouseDownPoint = e.GetPosition(ItemList);
-        _mouseDownItem = ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is System.Windows.Controls.ListViewItem container
+        _mouseDownItem = ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is WpfListViewItem container
             ? container.DataContext as FolderPanelItem
             : null;
     }
 
-    private void ItemList_OnPreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    private void ItemList_OnPreviewMouseMove(object sender, WpfMouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed ||
             _mouseDownPoint is null ||
@@ -333,7 +360,7 @@ public partial class FolderPanelWindow : Window
             return;
         }
 
-        if (ItemList.ItemContainerGenerator.ContainerFromItem(_mouseDownItem) is not System.Windows.Controls.ListViewItem container)
+        if (ItemList.ItemContainerGenerator.ContainerFromItem(_mouseDownItem) is not WpfListViewItem container)
         {
             ResetPointerInteraction();
             return;
@@ -361,7 +388,7 @@ public partial class FolderPanelWindow : Window
             return;
         }
 
-        if (ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is not System.Windows.Controls.ListViewItem container ||
+        if (ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is not WpfListViewItem container ||
             container.DataContext is not FolderPanelItem item)
         {
             ResetPointerInteraction();
@@ -389,15 +416,9 @@ public partial class FolderPanelWindow : Window
         ResetPointerInteraction();
     }
 
-    private void PinToggleButton_OnCheckedChanged(object sender, RoutedEventArgs e)
+    private void PinToggleButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_isPinStateSyncing || PinToggleButton.IsChecked is not bool isPinned)
-        {
-            return;
-        }
-
-        PinToggleButton.ToolTip = isPinned ? "取消钉住当前展开栏" : "钉住当前展开栏";
-        PinStateChanged?.Invoke(this, new PanelPinnedChangedEventArgs(isPinned));
+        PinStateChanged?.Invoke(this, new PanelPinnedChangedEventArgs(_currentPinMode.GetNextPinMode()));
     }
 
     private void NoticeCloseButton_OnClick(object sender, RoutedEventArgs e)
@@ -405,11 +426,11 @@ public partial class FolderPanelWindow : Window
         HideNotice();
     }
 
-    private PanelFolderHit CreatePanelFolderHit(System.Windows.Controls.ListViewItem container, FolderPanelItem item)
+    private PanelFolderHit CreatePanelFolderHit(WpfListViewItem container, FolderPanelItem item)
     {
-        var topLeft = container.PointToScreen(new System.Windows.Point(0, 0));
-        var bottomRight = container.PointToScreen(new System.Windows.Point(container.ActualWidth, container.ActualHeight));
-        return new PanelFolderHit(item, new Rect(topLeft, bottomRight), Level);
+        var topLeft = container.PointToScreen(new WpfPoint(0, 0));
+        var bottomRight = container.PointToScreen(new WpfPoint(container.ActualWidth, container.ActualHeight));
+        return new PanelFolderHit(item, new Rect(topLeft, bottomRight), Level, PanelId);
     }
 
     private bool IsClickRelease(MouseButtonEventArgs e, FolderPanelItem item)
@@ -444,6 +465,8 @@ public partial class FolderPanelWindow : Window
             LoadingBar is null ||
             ChromeTransform is null ||
             PinToggleButton is null ||
+            PinGlyphText is null ||
+            TitleBarBorder is null ||
             NoticeBanner is null ||
             NoticeTitleText is null ||
             NoticeDetailText is null)
@@ -535,22 +558,94 @@ public partial class FolderPanelWindow : Window
         return null;
     }
 
+    private static T? FindAncestor<T>(DependencyObject? node)
+        where T : DependencyObject
+    {
+        while (node is not null)
+        {
+            if (node is T match)
+            {
+                return match;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+
+        return null;
+    }
+
+    private string BuildPinTooltip(PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.None => "切换到“只钉在桌面”",
+            PanelPinMode.PinnedToDesktop => "切换到“全局置顶”",
+            PanelPinMode.PinnedTopmost => "恢复默认自动关闭",
+            _ => "钉住当前展开栏"
+        };
+    }
+
+    private WpfBrush ResolvePinBackground(PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.PinnedToDesktop => GetBrush("PanelSelectedBrush"),
+            PanelPinMode.PinnedTopmost => GetBrush("PanelExpandedBrush"),
+            _ => System.Windows.Media.Brushes.Transparent
+        };
+    }
+
+    private WpfBrush ResolvePinBorderBrush(PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.PinnedToDesktop => GetBrush("AccentBorderHoverBrush"),
+            PanelPinMode.PinnedTopmost => GetBrush("PanelExpandedBorderBrush"),
+            _ => System.Windows.Media.Brushes.Transparent
+        };
+    }
+
+    private WpfBrush ResolvePinForeground(PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.PinnedToDesktop => GetBrush("TextPrimaryBrush"),
+            PanelPinMode.PinnedTopmost => GetBrush("SegmentSelectedTextBrush"),
+            _ => GetBrush("PanelMutedBrush")
+        };
+    }
+
+    private static double ResolvePinRotation(PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.PinnedToDesktop => -45,
+            PanelPinMode.PinnedTopmost => -90,
+            _ => 0
+        };
+    }
+
+    private WpfBrush GetBrush(string resourceKey)
+    {
+        return (WpfBrush)FindResource(resourceKey);
+    }
+
     private static bool IsSpacePressed()
     {
         return (GetAsyncKeyState(VkSpace) & 0x8000) != 0;
     }
 
-    private static System.Windows.Point ResolveOffset(GestureDirection direction, bool isClosing)
+    private static WpfPoint ResolveOffset(GestureDirection direction, bool isClosing)
     {
         var distance = isClosing ? AnimationOffset * 0.7 : AnimationOffset;
 
         return direction switch
         {
-            GestureDirection.Right => new System.Windows.Point(isClosing ? distance : -distance, 0),
-            GestureDirection.Left => new System.Windows.Point(isClosing ? -distance : distance, 0),
-            GestureDirection.Down => new System.Windows.Point(0, isClosing ? distance : -distance),
-            GestureDirection.Up => new System.Windows.Point(0, isClosing ? -distance : distance),
-            _ => new System.Windows.Point(0, 0)
+            GestureDirection.Right => new WpfPoint(isClosing ? distance : -distance, 0),
+            GestureDirection.Left => new WpfPoint(isClosing ? -distance : distance, 0),
+            GestureDirection.Down => new WpfPoint(0, isClosing ? distance : -distance),
+            GestureDirection.Up => new WpfPoint(0, isClosing ? -distance : distance),
+            _ => new WpfPoint(0, 0)
         };
     }
 
@@ -558,5 +653,4 @@ public partial class FolderPanelWindow : Window
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
-
 }

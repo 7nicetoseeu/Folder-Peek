@@ -1,6 +1,6 @@
-using System.Runtime.InteropServices;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -16,17 +16,25 @@ public sealed class PanelManager : IDisposable
     private const double PanelGap = 8;
     private const double PanelStatusMinHeight = 220;
 
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private static readonly IntPtr HwndNoTopMost = new(-2);
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoOwnerZOrder = 0x0200;
+    private const uint SwpShowWindow = 0x0040;
+
     private readonly MainWindow _debugWindow;
     private readonly AppSettingsService _settingsService;
     private readonly FolderContentProvider _contentProvider;
     private readonly ShellLauncher _shellLauncher;
-    private readonly List<PanelContext> _panelStack = new();
+    private readonly List<PanelContext> _contexts = new();
 
     private CancellationTokenSource? _loadCts;
     private long _loadVersion;
-    private bool _isPinned;
+    private Guid? _activeChainId;
 
-    public bool HasActivePanel => _panelStack.Count > 0;
+    public bool HasActivePanel => _contexts.Count > 0;
 
     public PanelManager(MainWindow debugWindow, AppSettingsService settingsService)
     {
@@ -40,33 +48,55 @@ public sealed class PanelManager : IDisposable
 
     public Task ShowPanelAsync(DesktopFolderHit hit, GestureDirection direction)
     {
-        CloseAll(PanelCloseReason.NewPanelTriggered);
-        return ShowPanelCoreAsync(hit.DisplayName, hit.FullPath, hit.Bounds, direction, level: 0, parentLevel: null, parentItem: null);
+        CloseTemporaryPanels(PanelCloseReason.NewPanelTriggered);
+        _activeChainId = Guid.NewGuid();
+        return ShowPanelCoreAsync(
+            hit.DisplayName,
+            hit.FullPath,
+            hit.Bounds,
+            direction,
+            level: 0,
+            chainId: _activeChainId,
+            parentContextId: null,
+            parentItem: null,
+            initialPinMode: PanelPinMode.None);
     }
 
     public Task ShowChildPanelAsync(PanelFolderHit hit, GestureDirection direction)
     {
-        if (!hit.Item.IsFolder)
+        if (!TryGetContext(hit.PanelId, out var parentContext) || parentContext is null || !hit.Item.IsFolder)
         {
             return Task.CompletedTask;
         }
 
-        ClosePanelsAfterLevel(hit.Level);
+        Guid chainId;
+        if (parentContext.ChainId.HasValue && parentContext.ChainId == _activeChainId)
+        {
+            CloseChainDescendants(parentContext.Id);
+            chainId = parentContext.ChainId.Value;
+        }
+        else
+        {
+            CloseTemporaryPanels(PanelCloseReason.NewPanelTriggered);
+            chainId = Guid.NewGuid();
+            _activeChainId = chainId;
+        }
+
         return ShowPanelCoreAsync(
             hit.Item.DisplayName,
             hit.Item.FullPath,
             hit.Bounds,
             direction,
-            level: hit.Level + 1,
-            parentLevel: hit.Level,
-            parentItem: hit.Item);
+            level: parentContext.Level + 1,
+            chainId: chainId,
+            parentContextId: parentContext.Id,
+            parentItem: hit.Item,
+            initialPinMode: PanelPinMode.None);
     }
 
     public void CloseAll(PanelCloseReason reason = PanelCloseReason.Unknown, bool logWhenNoPanel = false)
     {
-        CancelPendingLoad();
-
-        if (_panelStack.Count == 0)
+        if (_contexts.Count == 0)
         {
             if (logWhenNoPanel)
             {
@@ -75,26 +105,21 @@ public sealed class PanelManager : IDisposable
             return;
         }
 
-        _debugWindow.AddLog($"关闭全部展开面板。原因：{DescribeCloseReason(reason)}");
-        if (ShouldBlockClose(reason))
+        if (ShouldPreservePinnedPanels(reason))
         {
-            ShowPinnedNotice(reason);
+            _debugWindow.AddLog($"关闭临时展开链，保留已钉住窗口。原因：{DescribeCloseReason(reason)}");
+            CloseTemporaryPanels(reason);
             return;
         }
 
-        foreach (var context in _panelStack.OrderByDescending(item => item.Level).ToArray())
-        {
-            ClosePanelContext(context);
-        }
-
-        _panelStack.Clear();
-        _isPinned = false;
+        _debugWindow.AddLog($"关闭全部展开面板。原因：{DescribeCloseReason(reason)}");
+        CloseAllPanels(reason);
     }
 
     public void Dispose()
     {
         _settingsService.PanelVisibleItemCountChanged -= SettingsService_OnPanelVisibleItemCountChanged;
-        CloseAll(PanelCloseReason.Dispose);
+        CloseAllPanels(PanelCloseReason.Dispose);
     }
 
     public void PrewarmFolder(string fullPath)
@@ -104,7 +129,10 @@ public sealed class PanelManager : IDisposable
 
     public bool TryActivatePanel()
     {
-        var context = _panelStack.OrderByDescending(item => item.Level).FirstOrDefault();
+        var context = GetLeafContexts()
+            .OrderByDescending(item => item.ChainId == _activeChainId)
+            .ThenByDescending(item => item.Level)
+            .FirstOrDefault();
         if (context is null)
         {
             return false;
@@ -117,7 +145,7 @@ public sealed class PanelManager : IDisposable
 
     public bool IsPointInsideAnyPanel(int x, int y)
     {
-        foreach (var context in _panelStack)
+        foreach (var context in _contexts)
         {
             if (!TryGetWindowRect(context.Window, out var rect))
             {
@@ -135,7 +163,13 @@ public sealed class PanelManager : IDisposable
 
     public bool TryHitTestFolderItem(int x, int y, out PanelFolderHit? hit)
     {
-        foreach (var context in _panelStack.OrderByDescending(item => item.Level))
+        if (TryGetTopmostContextAtPoint(x, y, out var topmostContext) &&
+            topmostContext!.Window.TryHitTestFolderItem(x, y, out hit))
+        {
+            return true;
+        }
+
+        foreach (var context in EnumerateFallbackHitTestContexts(topmostContext))
         {
             if (context.Window.TryHitTestFolderItem(x, y, out hit))
             {
@@ -149,7 +183,7 @@ public sealed class PanelManager : IDisposable
 
     public void UpdateChildDragPreview(PanelFolderHit hit, GestureDirection direction, double progress)
     {
-        if (!TryGetContext(hit.Level, out var context) || context is null)
+        if (!TryGetContext(hit.PanelId, out var context) || context is null)
         {
             return;
         }
@@ -160,7 +194,7 @@ public sealed class PanelManager : IDisposable
 
     public void ClearDragPreview()
     {
-        foreach (var context in _panelStack)
+        foreach (var context in _contexts)
         {
             context.Window.ClearDragPreview();
         }
@@ -172,11 +206,12 @@ public sealed class PanelManager : IDisposable
         Rect sourceBoundsPx,
         GestureDirection direction,
         int level,
-        int? parentLevel,
-        FolderPanelItem? parentItem)
+        Guid? chainId,
+        Guid? parentContextId,
+        FolderPanelItem? parentItem,
+        PanelPinMode initialPinMode)
     {
         CancelPendingLoad();
-        ClosePanelsFromLevel(level);
 
         var cts = new CancellationTokenSource();
         _loadCts = cts;
@@ -185,12 +220,18 @@ public sealed class PanelManager : IDisposable
 
         try
         {
+            var contextId = Guid.NewGuid();
             panel = new FolderPanelWindow
             {
+                PanelId = contextId,
                 Level = level,
-                VisibleItemLimit = _settingsService.PanelVisibleItemCount
+                VisibleItemLimit = _settingsService.PanelVisibleItemCount,
+                Topmost = ShouldUseTopMost(initialPinMode)
             };
             panel.ShowLoadingState(displayName, fullPath);
+
+            var context = new PanelContext(contextId, level, chainId, parentContextId, parentItem, initialPinMode, panel);
+            _contexts.Add(context);
 
             var loadingPlacement = CalculatePlacement(sourceBoundsPx, direction, PanelStatusMinHeight, PanelDefaultWidth);
             ApplyPlacement(panel, loadingPlacement);
@@ -201,24 +242,22 @@ public sealed class PanelManager : IDisposable
             panel.PinStateChanged += OnPanelPinStateChanged;
             panel.Closed += OnPanelClosed;
 
-            var context = new PanelContext(level, parentLevel, parentItem, panel);
-            _panelStack.Add(context);
-
-            if (parentLevel.HasValue && parentItem is not null && TryGetContext(parentLevel.Value, out var parentContext))
+            if (parentContextId.HasValue && parentItem is not null && TryGetContext(parentContextId.Value, out var parentContext))
             {
                 parentContext!.Window.SetExpandedItem(parentItem);
             }
 
-            SyncPinStateToPanels();
-
             panel.Show();
+            ApplyWindowPinMode(context);
+            SyncPanelPresentation();
+
             panel.BeginShowAnimation(direction);
             panel.Activate();
 
             _debugWindow.AddLog($"正在展开第 {level + 1} 层面板：{fullPath}");
 
             var items = await _contentProvider.GetItemsAsync(fullPath, cts.Token);
-            if (cts.IsCancellationRequested || loadVersion != _loadVersion)
+            if (cts.IsCancellationRequested || loadVersion != _loadVersion || !TryGetContext(contextId, out context) || context is null)
             {
                 return;
             }
@@ -227,6 +266,8 @@ public sealed class PanelManager : IDisposable
             var desiredWidth = CalculatePanelWidth(displayName, items);
             var desiredHeight = panel.GetPreferredWindowHeight();
             ApplyPlacement(panel, CalculatePlacement(sourceBoundsPx, direction, desiredHeight, desiredWidth));
+            ApplyWindowPinMode(context);
+            SyncPanelPresentation();
 
             _debugWindow.AddLog($"已展开第 {level + 1} 层面板：{fullPath}，项目数={items.Count}");
         }
@@ -261,21 +302,30 @@ public sealed class PanelManager : IDisposable
 
     private void OnPanelPinStateChanged(object? sender, PanelPinnedChangedEventArgs e)
     {
-        _isPinned = e.IsPinned;
-        SyncPinStateToPanels();
-
-        if (sender is FolderPanelWindow panel)
+        if (sender is not FolderPanelWindow panel ||
+            !TryGetContext(panel.PanelId, out var context) ||
+            context is null)
         {
-            panel.ShowTransientNotice(
-                e.IsPinned ? "已钉住展开栏" : "已取消钉住",
-                e.IsPinned ? "点击外部、按 Esc 或打开文件后都不会自动关闭。" : "展开栏已恢复默认关闭行为。");
-            panel.Activate();
+            return;
         }
+
+        if (e.PinMode == PanelPinMode.None)
+        {
+            UnpinContext(context);
+        }
+        else
+        {
+            PinContext(context, e.PinMode);
+        }
+
+        SyncPanelPresentation();
+        panel.ShowTransientNotice(GetPinNoticeTitle(e.PinMode), GetPinNoticeDetail(e.PinMode));
+        panel.Activate();
     }
 
     private void SettingsService_OnPanelVisibleItemCountChanged(object? sender, EventArgs e)
     {
-        foreach (var context in _panelStack)
+        foreach (var context in _contexts)
         {
             context.Window.SetVisibleItemLimit(_settingsService.PanelVisibleItemCount);
         }
@@ -287,25 +337,15 @@ public sealed class PanelManager : IDisposable
         {
             _debugWindow.AddLog($"已打开文件：{fullPath}");
             _debugWindow.AddActivity($"已打开文件：{Path.GetFileName(fullPath)}");
-            if (_isPinned)
-            {
-                ShowPinnedNotice(PanelCloseReason.FileOpened);
-            }
-            else
-            {
-                CloseAll(PanelCloseReason.FileOpened);
-            }
+            CloseTemporaryPanels(PanelCloseReason.FileOpened);
             return;
         }
 
-        _debugWindow.AddLog($"打开文件失败：{fullPath}；{errorMessage}");
+        _debugWindow.AddLog($"打开文件失败：{fullPath}，{errorMessage}");
         _debugWindow.AddActivity($"打开文件失败：{Path.GetFileName(fullPath)}");
         if (sender is FolderPanelWindow panel)
         {
-            var detail = string.IsNullOrWhiteSpace(errorMessage)
-                ? "系统没有返回更多信息。"
-                : errorMessage;
-            panel.ShowTransientNotice("打开失败", detail);
+            panel.ShowTransientNotice("打开失败", string.IsNullOrWhiteSpace(errorMessage) ? "系统没有返回更多信息。" : errorMessage);
             panel.Activate();
         }
     }
@@ -324,63 +364,177 @@ public sealed class PanelManager : IDisposable
             return;
         }
 
-        var context = _panelStack.FirstOrDefault(item => ReferenceEquals(item.Window, panel));
-        if (context is null)
+        if (!TryGetContext(panel.PanelId, out var context) || context is null)
         {
             DetachPanel(panel);
             return;
         }
 
-        _panelStack.Remove(context);
+        CloseDescendants(context.Id);
+        _contexts.Remove(context);
         DetachPanel(panel);
 
-        if (context.ParentLevel.HasValue && TryGetContext(context.ParentLevel.Value, out var parentContext))
+        if (context.ParentContextId.HasValue && TryGetContext(context.ParentContextId.Value, out var parentContext))
         {
             parentContext!.Window.ClearExpandedState();
         }
 
-        ClosePanelsFromLevel(context.Level + 1);
-        if (_panelStack.Count == 0)
+        if (_activeChainId.HasValue && !_contexts.Any(item => item.ChainId == _activeChainId))
         {
-            _isPinned = false;
+            _activeChainId = null;
         }
 
-        SyncPinStateToPanels();
+        SyncPanelPresentation();
     }
 
-    private void ClosePanelsAfterLevel(int level)
+    private void PinContext(PanelContext context, PanelPinMode pinMode)
+    {
+        if (context.ChainId.HasValue && context.ChainId == _activeChainId)
+        {
+            CloseChainDescendants(context.Id);
+        }
+
+        context.ParentContextId = null;
+        context.ParentItem = null;
+        CloseAncestorChain(context.Id);
+        context.ChainId = null;
+        context.PinMode = pinMode;
+
+        if (_activeChainId.HasValue && !_contexts.Any(item => item.Id != context.Id && item.ChainId == _activeChainId))
+        {
+            _activeChainId = null;
+        }
+
+        ApplyWindowPinMode(context);
+    }
+
+    private void UnpinContext(PanelContext context)
+    {
+        CloseTemporaryPanels(PanelCloseReason.Unknown);
+        _activeChainId = Guid.NewGuid();
+        context.ChainId = _activeChainId;
+        context.PinMode = PanelPinMode.None;
+        context.ParentContextId = null;
+        context.ParentItem = null;
+        ApplyWindowPinMode(context);
+    }
+
+    private void CloseTemporaryPanels(PanelCloseReason reason)
     {
         CancelPendingLoad();
-        ClosePanelsFromLevel(level + 1);
 
-        if (TryGetContext(level, out var context))
+        if (!_activeChainId.HasValue)
         {
-            context!.Window.ClearExpandedState();
+            return;
         }
 
-        SyncPinStateToPanels();
-    }
-
-    private void ClosePanelsFromLevel(int startLevel)
-    {
-        foreach (var context in _panelStack
-                     .Where(item => item.Level >= startLevel)
+        var activeChainId = _activeChainId.Value;
+        foreach (var context in _contexts
+                     .Where(item => item.ChainId == activeChainId)
                      .OrderByDescending(item => item.Level)
                      .ToArray())
         {
-            _panelStack.Remove(context);
+            _contexts.Remove(context);
             ClosePanelContext(context);
         }
 
-        if (_panelStack.Count == 0)
+        _activeChainId = null;
+    }
+
+    private void CloseAllPanels(PanelCloseReason reason)
+    {
+        CancelPendingLoad();
+
+        foreach (var context in _contexts.OrderByDescending(item => item.Level).ToArray())
         {
-            _isPinned = false;
+            _contexts.Remove(context);
+            ClosePanelContext(context);
         }
+
+        _activeChainId = null;
+    }
+
+    private void CloseChainDescendants(Guid parentContextId)
+    {
+        foreach (var context in GetDescendants(parentContextId)
+                     .OrderByDescending(item => item.Level)
+                     .ToArray())
+        {
+            _contexts.Remove(context);
+            ClosePanelContext(context);
+        }
+
+        if (TryGetContext(parentContextId, out var parentContext))
+        {
+            parentContext!.Window.ClearExpandedState();
+        }
+
+        if (_activeChainId.HasValue && !_contexts.Any(item => item.ChainId == _activeChainId))
+        {
+            _activeChainId = null;
+        }
+    }
+
+    private void CloseAncestorChain(Guid contextId)
+    {
+        if (!TryGetContext(contextId, out var context) || context is null)
+        {
+            return;
+        }
+
+        var ancestorId = context.ParentContextId;
+        while (ancestorId.HasValue && TryGetContext(ancestorId.Value, out var ancestor) && ancestor is not null)
+        {
+            var nextAncestorId = ancestor.ParentContextId;
+            _contexts.Remove(ancestor);
+            ClosePanelContext(ancestor);
+            ancestorId = nextAncestorId;
+        }
+
+        if (_activeChainId.HasValue && !_contexts.Any(item => item.ChainId == _activeChainId))
+        {
+            _activeChainId = null;
+        }
+    }
+
+    private void CloseDescendants(Guid contextId)
+    {
+        foreach (var context in GetDescendants(contextId)
+                     .OrderByDescending(item => item.Level)
+                     .ToArray())
+        {
+            _contexts.Remove(context);
+            ClosePanelContext(context);
+        }
+    }
+
+    private IEnumerable<PanelContext> GetDescendants(Guid parentContextId)
+    {
+        var descendants = new List<PanelContext>();
+        var queue = new Queue<Guid>();
+        queue.Enqueue(parentContextId);
+
+        while (queue.Count > 0)
+        {
+            var currentParentId = queue.Dequeue();
+            foreach (var child in _contexts.Where(item => item.ParentContextId == currentParentId).ToArray())
+            {
+                descendants.Add(child);
+                queue.Enqueue(child.Id);
+            }
+        }
+
+        return descendants;
+    }
+
+    private IEnumerable<PanelContext> GetLeafContexts()
+    {
+        return _contexts.Where(context => !_contexts.Any(child => child.ParentContextId == context.Id));
     }
 
     private void ClosePanelContext(PanelContext context)
     {
-        if (context.ParentLevel.HasValue && TryGetContext(context.ParentLevel.Value, out var parentContext))
+        if (context.ParentContextId.HasValue && TryGetContext(context.ParentContextId.Value, out var parentContext))
         {
             parentContext!.Window.ClearExpandedState();
         }
@@ -398,9 +552,9 @@ public sealed class PanelManager : IDisposable
         panel.Closed -= OnPanelClosed;
     }
 
-    private bool TryGetContext(int level, out PanelContext? context)
+    private bool TryGetContext(Guid panelId, out PanelContext? context)
     {
-        context = _panelStack.FirstOrDefault(item => item.Level == level);
+        context = _contexts.FirstOrDefault(item => item.Id == panelId);
         return context is not null;
     }
 
@@ -426,39 +580,46 @@ public sealed class PanelManager : IDisposable
 
     private bool IsPanelTracked(FolderPanelWindow panel)
     {
-        return _panelStack.Any(item => ReferenceEquals(item.Window, panel));
+        return _contexts.Any(item => ReferenceEquals(item.Window, panel));
     }
 
-    private bool ShouldBlockClose(PanelCloseReason reason)
+    private void SyncPanelPresentation()
     {
-        return _isPinned && reason is PanelCloseReason.LostFocus or PanelCloseReason.EscapeKey or PanelCloseReason.FileOpened;
+        foreach (var context in _contexts)
+        {
+            var isLeaf = !_contexts.Any(child => child.ParentContextId == context.Id);
+            var canDrag = context.PinMode.IsPinned() && !_contexts.Any(parent => parent.Id == context.ParentContextId);
+            context.Window.SetPinState(isLeaf, context.PinMode, canDrag);
+            ApplyWindowPinMode(context);
+        }
     }
 
-    private void ShowPinnedNotice(PanelCloseReason reason)
+    private void ApplyWindowPinMode(PanelContext context)
     {
-        var context = _panelStack.OrderByDescending(item => item.Level).FirstOrDefault();
-        if (context is null)
+        var handle = new WindowInteropHelper(context.Window).Handle;
+        var shouldUseTopMost = ShouldUseTopMost(context.PinMode);
+        context.Window.Topmost = shouldUseTopMost;
+
+        if (handle == IntPtr.Zero)
         {
             return;
         }
 
-        context.Window.ShowTransientNotice("当前已钉住", DescribePinnedBlockReason(reason));
-        context.Window.Activate();
-        _debugWindow.AddLog($"已拦截关闭请求：{DescribeCloseReason(reason)}");
+        var target = shouldUseTopMost ? HwndTopMost : HwndNoTopMost;
+        _ = SetWindowPos(handle, target, 0, 0, 0, 0, SwpNoActivate | SwpNoMove | SwpNoSize | SwpNoOwnerZOrder | SwpShowWindow);
     }
 
-    private void SyncPinStateToPanels()
+    private static bool ShouldUseTopMost(PanelPinMode pinMode)
     {
-        if (_panelStack.Count == 0)
-        {
-            return;
-        }
+        return pinMode != PanelPinMode.PinnedToDesktop;
+    }
 
-        var deepestLevel = _panelStack.Max(item => item.Level);
-        foreach (var context in _panelStack)
-        {
-            context.Window.SetPinState(context.Level == deepestLevel, _isPinned);
-        }
+    private static bool ShouldPreservePinnedPanels(PanelCloseReason reason)
+    {
+        return reason is PanelCloseReason.LostFocus or
+            PanelCloseReason.EscapeKey or
+            PanelCloseReason.FileOpened or
+            PanelCloseReason.NewPanelTriggered;
     }
 
     private static string DescribeCloseReason(PanelCloseReason reason)
@@ -477,14 +638,25 @@ public sealed class PanelManager : IDisposable
         };
     }
 
-    private static string DescribePinnedBlockReason(PanelCloseReason reason)
+    private static string GetPinNoticeTitle(PanelPinMode pinMode)
     {
-        return reason switch
+        return pinMode switch
         {
-            PanelCloseReason.LostFocus => "点击外部不会关闭。先取消钉住，再点面板外部即可收起。",
-            PanelCloseReason.EscapeKey => "当前展开栏已钉住。先取消钉住，再按 Esc 关闭。",
-            PanelCloseReason.FileOpened => "文件已经打开，但当前展开栏保持展开。先取消钉住后才会恢复自动收起。",
-            _ => "当前展开栏已钉住。先取消钉住后才能自动关闭。"
+            PanelPinMode.None => "已恢复默认",
+            PanelPinMode.PinnedToDesktop => "已钉在桌面",
+            PanelPinMode.PinnedTopmost => "已全局置顶",
+            _ => "已更新图钉状态"
+        };
+    }
+
+    private static string GetPinNoticeDetail(PanelPinMode pinMode)
+    {
+        return pinMode switch
+        {
+            PanelPinMode.None => "当前窗口恢复默认自动关闭行为；再次点图钉可重新保留。",
+            PanelPinMode.PinnedToDesktop => "当前窗口会保留在桌面工作区里，但不会继续压在后续打开的程序窗口之上。",
+            PanelPinMode.PinnedTopmost => "当前窗口会保留并继续显示在后续打开的程序窗口之上。",
+            _ => "图钉状态已更新。"
         };
     }
 
@@ -645,7 +817,70 @@ public sealed class PanelManager : IDisposable
         return handle != IntPtr.Zero && GetWindowRect(handle, out rect);
     }
 
-    private sealed record PanelContext(int Level, int? ParentLevel, FolderPanelItem? ParentItem, FolderPanelWindow Window);
+    private bool TryGetTopmostContextAtPoint(int x, int y, out PanelContext? context)
+    {
+        var handle = WindowFromPoint(new NativePoint(x, y));
+        if (handle != IntPtr.Zero)
+        {
+            context = _contexts.FirstOrDefault(item => new WindowInteropHelper(item.Window).Handle == handle);
+            if (context is not null)
+            {
+                return true;
+            }
+        }
+
+        context = null;
+        return false;
+    }
+
+    private IEnumerable<PanelContext> EnumerateFallbackHitTestContexts(PanelContext? excludedContext)
+    {
+        for (var index = _contexts.Count - 1; index >= 0; index--)
+        {
+            var context = _contexts[index];
+            if (ReferenceEquals(context, excludedContext))
+            {
+                continue;
+            }
+
+            yield return context;
+        }
+    }
+
+    private sealed class PanelContext
+    {
+        public PanelContext(
+            Guid id,
+            int level,
+            Guid? chainId,
+            Guid? parentContextId,
+            FolderPanelItem? parentItem,
+            PanelPinMode pinMode,
+            FolderPanelWindow window)
+        {
+            Id = id;
+            Level = level;
+            ChainId = chainId;
+            ParentContextId = parentContextId;
+            ParentItem = parentItem;
+            PinMode = pinMode;
+            Window = window;
+        }
+
+        public Guid Id { get; }
+
+        public int Level { get; }
+
+        public Guid? ChainId { get; set; }
+
+        public Guid? ParentContextId { get; set; }
+
+        public FolderPanelItem? ParentItem { get; set; }
+
+        public PanelPinMode PinMode { get; set; }
+
+        public FolderPanelWindow Window { get; }
+    }
 
     private sealed record PanelPlacement(double Left, double Top, double Width, double Height, double MaxHeight);
 
@@ -670,6 +905,19 @@ public sealed class PanelManager : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(NativePoint point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
