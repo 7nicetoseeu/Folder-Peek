@@ -1,6 +1,6 @@
-using System.Windows;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows;
 using System.Windows.Threading;
 
 namespace FolderPeek.App;
@@ -18,16 +18,22 @@ public sealed class PrototypeCoordinator : IDisposable
     private readonly GlobalKeyboardHook _keyboardHook;
     private readonly TrayIconService _trayIcon;
     private readonly PanelManager _panelManager;
+    private readonly object _desktopGestureStateLock = new();
     private AboutWindow? _aboutWindow;
+    private GesturePreviewWindow? _gesturePreviewWindow;
 
     private bool _isEnabled = true;
     private bool _isTracking;
     private bool _isTriggered;
+    private bool _isSpaceHeld;
     private int _startX;
     private int _startY;
     private GestureOrigin _gestureOrigin;
     private DesktopFolderHit? _currentDesktopHit;
     private PanelFolderHit? _currentPanelHit;
+    private DesktopFolderHit? _desktopGestureCandidate;
+    private PendingDesktopSuppression? _pendingDesktopSuppression;
+    private bool _isDesktopGestureSuppressed;
     private readonly object _pendingMoveLock = new();
     private GlobalMouseEventArgs? _pendingMoveEvent;
     private int _isMoveDispatchQueued;
@@ -53,9 +59,10 @@ public sealed class PrototypeCoordinator : IDisposable
         _trayIcon.AboutRequested += OnAboutRequested;
         _trayIcon.ExitRequested += OnExitRequested;
 
+        _mouseHook.SuppressPredicate = ShouldSuppressMouseAction;
         _mouseHook.MouseAction += OnMouseAction;
         _mouseHook.Start();
-        _keyboardHook.KeyPressed += OnKeyPressed;
+        _keyboardHook.KeyAction += OnKeyAction;
         _keyboardHook.Start();
 
         _window.SetHookState(true);
@@ -72,10 +79,33 @@ public sealed class PrototypeCoordinator : IDisposable
     public void Dispose()
     {
         _aboutWindow?.Close();
+        _gesturePreviewWindow?.Close();
         _panelManager.Dispose();
         _keyboardHook.Dispose();
         _mouseHook.Dispose();
         _trayIcon.Dispose();
+    }
+
+    private bool ShouldSuppressMouseAction(GlobalMouseEventArgs e)
+    {
+        if (!_isEnabled)
+        {
+            return false;
+        }
+
+        if (e.ActionType != MouseActionType.LeftButtonDown || !IsSpacePressed())
+        {
+            return false;
+        }
+
+        if (!TryGetDesktopGestureCandidateAtPoint(e.X, e.Y, out var hit) || hit is null)
+        {
+            return false;
+        }
+
+        SetPendingDesktopSuppression(new PendingDesktopSuppression(hit, e.X, e.Y));
+        SetDesktopGestureSuppressed(true);
+        return true;
     }
 
     private void OnMouseAction(object? sender, GlobalMouseEventArgs e)
@@ -91,9 +121,16 @@ public sealed class PrototypeCoordinator : IDisposable
             DispatcherPriority.Input);
     }
 
-    private void OnKeyPressed(object? sender, GlobalKeyEventArgs e)
+    private void OnKeyAction(object? sender, GlobalKeyEventArgs e)
     {
-        _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(() => HandleKeyPressed(e));
+        if (e.VirtualKey == VkSpace)
+        {
+            _isSpaceHeld = e.ActionType == KeyActionType.Down;
+        }
+
+        _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(
+            () => HandleKeyAction(e),
+            DispatcherPriority.Input);
     }
 
     private void HandleMouseAction(GlobalMouseEventArgs e)
@@ -128,6 +165,7 @@ public sealed class PrototypeCoordinator : IDisposable
     {
         if (!IsSpacePressed())
         {
+            SetPendingDesktopSuppression(null);
             ResetTrackingState();
             return;
         }
@@ -159,9 +197,10 @@ public sealed class PrototypeCoordinator : IDisposable
             return;
         }
 
-        var hit = _resolver.TryResolveFolderFromScreenPoint(x, y);
+        var hit = TryConsumePendingDesktopSuppression(x, y) ?? _resolver.TryResolveFolderFromSnapshotPoint(x, y);
         if (hit is null)
         {
+            SetPendingDesktopSuppression(null);
             ResetTrackingState();
             _window.ShowFolderHit(null);
             _window.SetTrackingState("起点不是桌面文件夹");
@@ -176,18 +215,27 @@ public sealed class PrototypeCoordinator : IDisposable
         _gestureOrigin = GestureOrigin.DesktopFolder;
         _currentDesktopHit = hit;
         _currentPanelHit = null;
+        SetDesktopGestureCandidate(hit);
+        SetDesktopGestureSuppressed(true);
+        SetPendingDesktopSuppression(null);
 
         _window.ShowFolderHit(hit);
         _window.SetTrackingState($"已命中文件夹，等待拖动超过 {DesktopTriggerThreshold:F0}px");
         _window.SetDirection("-");
         _window.SetDistance(0);
-        _window.AddLog($"开始手势：起点=({x},{y})，文件夹={hit.FullPath}");
+        ShowDesktopGesturePreview(hit, GestureDirection.Right, 0);
+        _window.AddLog($"开始桌面手势：起点=({x},{y})，文件夹={hit.FullPath}");
     }
 
     private void HandleMouseMove(int x, int y)
     {
-        if (!_isTracking || (_gestureOrigin == GestureOrigin.None))
+        if (!_isTracking || _gestureOrigin == GestureOrigin.None)
         {
+            if (_isSpaceHeld && !_isTracking)
+            {
+                UpdateDesktopGestureCandidateAtPoint(x, y);
+            }
+
             return;
         }
 
@@ -198,6 +246,34 @@ public sealed class PrototypeCoordinator : IDisposable
         var distance = ResolveTriggerDistance(deltaX, deltaY, direction, _gestureOrigin);
 
         _window.SetDistance(distance);
+        _window.SetDirection(DirectionToText(direction));
+
+        if (_gestureOrigin == GestureOrigin.DesktopFolder && _currentDesktopHit is not null)
+        {
+            if (_isTriggered)
+            {
+                return;
+            }
+
+            var progress = Math.Clamp(distance / threshold, 0, 1);
+
+            if (distance > threshold)
+            {
+                _isTriggered = true;
+                _window.SetTrackingState("已触发");
+                DismissDesktopGesturePreview(immediate: false);
+                _window.ShowFolderHit(_currentDesktopHit);
+                _window.AddLog($"触发成功：方向={DirectionToText(direction)}，距离={distance:F1}px，文件夹={_currentDesktopHit.FullPath}");
+                _ = _panelManager.ShowPanelAsync(_currentDesktopHit, direction);
+                return;
+            }
+
+            ShowDesktopGesturePreview(_currentDesktopHit, direction, progress);
+            _window.SetTrackingState(progress <= 0
+                ? $"已命中文件夹，等待拖动超过 {DesktopTriggerThreshold:F0}px"
+                : $"正在准备展开第一层（{progress:P0}）");
+            return;
+        }
 
         if (_gestureOrigin == GestureOrigin.PanelFolder && _currentPanelHit is not null)
         {
@@ -216,10 +292,10 @@ public sealed class PrototypeCoordinator : IDisposable
         _isTriggered = true;
 
         _window.SetTrackingState("已触发");
-        _window.SetDirection(DirectionToText(direction));
         switch (_gestureOrigin)
         {
             case GestureOrigin.DesktopFolder when _currentDesktopHit is not null:
+                DismissDesktopGesturePreview(immediate: false);
                 _window.ShowFolderHit(_currentDesktopHit);
                 _window.AddLog($"触发成功：方向={DirectionToText(direction)}，距离={distance:F1}px，文件夹={_currentDesktopHit.FullPath}");
                 _ = _panelManager.ShowPanelAsync(_currentDesktopHit, direction);
@@ -232,14 +308,53 @@ public sealed class PrototypeCoordinator : IDisposable
         }
     }
 
-    private void HandleKeyPressed(GlobalKeyEventArgs e)
+    private void HandleKeyAction(GlobalKeyEventArgs e)
     {
-        if (e.VirtualKey != VkEscape || !_panelManager.HasActivePanel)
+        if (e.VirtualKey == VkSpace)
+        {
+            HandleSpaceKeyAction(e.ActionType);
+            return;
+        }
+
+        if (e.VirtualKey != VkEscape || e.ActionType != KeyActionType.Down)
         {
             return;
         }
 
-        _panelManager.CloseAll(PanelCloseReason.EscapeKey);
+        if (_gestureOrigin == GestureOrigin.DesktopFolder && _isTracking)
+        {
+            _window.AddLog("桌面首层手势已取消：按下 Esc。");
+            CancelDesktopGesturePreview();
+        }
+
+        if (_panelManager.HasActivePanel)
+        {
+            _panelManager.CloseAll(PanelCloseReason.EscapeKey);
+        }
+    }
+
+    private void HandleSpaceKeyAction(KeyActionType actionType)
+    {
+        if (actionType == KeyActionType.Down)
+        {
+            _resolver.PrimeSnapshot();
+            if (TryGetCursorScreenPoint(out var cursorPoint))
+            {
+                UpdateDesktopGestureCandidateAtPoint(cursorPoint.X, cursorPoint.Y);
+            }
+
+            return;
+        }
+
+        _resolver.InvalidateSnapshot();
+        SetDesktopGestureCandidate(null);
+        SetPendingDesktopSuppression(null);
+
+        if (_gestureOrigin == GestureOrigin.DesktopFolder && _isTracking)
+        {
+            _window.AddLog("桌面首层手势已取消：Space 已松开。");
+            CancelDesktopGesturePreview();
+        }
     }
 
     private void HandleLeftButtonUp()
@@ -249,8 +364,14 @@ public sealed class PrototypeCoordinator : IDisposable
             _window.AddLog("手势结束：Space + 左键已按下，但拖动距离还没到阈值。");
         }
 
+        var trackedDesktopGesture = _gestureOrigin == GestureOrigin.DesktopFolder;
         ResetTrackingState();
         _window.ResetGesture();
+
+        if (trackedDesktopGesture && !_isSpaceHeld)
+        {
+            _window.ShowFolderHit(null);
+        }
 
         if (_panelManager.TryActivatePanel())
         {
@@ -295,6 +416,7 @@ public sealed class PrototypeCoordinator : IDisposable
 
     private void OnShowDesktopInfoRequested(object? sender, EventArgs e)
     {
+        _resolver.InvalidateSnapshot();
         LogDesktopRoots();
         _window.AddActivity("已刷新桌面路径信息。");
     }
@@ -332,8 +454,129 @@ public sealed class PrototypeCoordinator : IDisposable
         if (!_isEnabled)
         {
             ResetTrackingState();
+            SetDesktopGestureCandidate(null);
+            SetPendingDesktopSuppression(null);
+            _resolver.InvalidateSnapshot();
             _panelManager.CloseAll(PanelCloseReason.ListeningPaused);
             _window.ResetGesture();
+            _window.ShowFolderHit(null);
+        }
+    }
+
+    private void ShowDesktopGesturePreview(DesktopFolderHit hit, GestureDirection direction, double progress)
+    {
+        EnsurePreviewWindow();
+        _gesturePreviewWindow!.UpdatePreview(hit, direction, progress);
+    }
+
+    private void DismissDesktopGesturePreview(bool immediate)
+    {
+        _gesturePreviewWindow?.Dismiss(immediate);
+    }
+
+    private void EnsurePreviewWindow()
+    {
+        if (_gesturePreviewWindow is not null)
+        {
+            return;
+        }
+
+        _gesturePreviewWindow = new GesturePreviewWindow();
+    }
+
+    private void CancelDesktopGesturePreview()
+    {
+        ResetTrackingState();
+        _window.ResetGesture();
+        _window.ShowFolderHit(null);
+    }
+
+    private void UpdateDesktopGestureCandidateAtPoint(int x, int y)
+    {
+        if (!_isSpaceHeld || _isTracking)
+        {
+            return;
+        }
+
+        if (_panelManager.IsPointInsideAnyPanel(x, y))
+        {
+            SetDesktopGestureCandidate(null);
+            return;
+        }
+
+        var hit = _resolver.TryResolveFolderFromSnapshotPoint(x, y);
+        SetDesktopGestureCandidate(hit);
+
+        if (hit is null)
+        {
+            _window.ShowFolderHit(null);
+            _window.SetTrackingState("起点不是桌面文件夹");
+            return;
+        }
+
+        _window.ShowFolderHit(hit);
+        _window.SetTrackingState($"已命中文件夹，等待拖动超过 {DesktopTriggerThreshold:F0}px");
+    }
+
+    private bool TryGetDesktopGestureCandidateAtPoint(int x, int y, out DesktopFolderHit? hit)
+    {
+        lock (_desktopGestureStateLock)
+        {
+            if (_desktopGestureCandidate is not null && _desktopGestureCandidate.Bounds.Contains(x, y))
+            {
+                hit = _desktopGestureCandidate;
+                return true;
+            }
+        }
+
+        hit = null;
+        return false;
+    }
+
+    private void SetDesktopGestureCandidate(DesktopFolderHit? hit)
+    {
+        lock (_desktopGestureStateLock)
+        {
+            _desktopGestureCandidate = hit;
+        }
+    }
+
+    private void SetPendingDesktopSuppression(PendingDesktopSuppression? suppression)
+    {
+        lock (_desktopGestureStateLock)
+        {
+            _pendingDesktopSuppression = suppression;
+        }
+    }
+
+    private DesktopFolderHit? TryConsumePendingDesktopSuppression(int x, int y)
+    {
+        lock (_desktopGestureStateLock)
+        {
+            if (_pendingDesktopSuppression is null)
+            {
+                return null;
+            }
+
+            var suppression = _pendingDesktopSuppression;
+            _pendingDesktopSuppression = null;
+            return suppression.IsForPoint(x, y) ? suppression.Hit : null;
+        }
+    }
+
+    private bool IsDesktopGestureSuppressed()
+    {
+        lock (_desktopGestureStateLock)
+        {
+            return _isDesktopGestureSuppressed;
+        }
+    }
+
+    private void SetDesktopGestureSuppressed(bool isSuppressed)
+    {
+        lock (_desktopGestureStateLock)
+        {
+            _isDesktopGestureSuppressed = isSuppressed;
         }
     }
 
@@ -389,11 +632,20 @@ public sealed class PrototypeCoordinator : IDisposable
     private void ResetTrackingState()
     {
         _panelManager.ClearDragPreview();
+        DismissDesktopGesturePreview(immediate: true);
+        SetDesktopGestureSuppressed(false);
         _isTracking = false;
         _isTriggered = false;
         _gestureOrigin = GestureOrigin.None;
         _currentDesktopHit = null;
         _currentPanelHit = null;
+
+        if (!_isSpaceHeld)
+        {
+            SetDesktopGestureCandidate(null);
+        }
+
+        SetPendingDesktopSuppression(null);
 
         lock (_pendingMoveLock)
         {
@@ -447,6 +699,11 @@ public sealed class PrototypeCoordinator : IDisposable
             DispatcherPriority.Background);
     }
 
+    private static bool TryGetCursorScreenPoint(out NativePoint point)
+    {
+        return GetCursorPos(out point);
+    }
+
     private enum GestureOrigin
     {
         None,
@@ -454,6 +711,24 @@ public sealed class PrototypeCoordinator : IDisposable
         PanelFolder
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    private sealed record PendingDesktopSuppression(DesktopFolderHit Hit, int X, int Y)
+    {
+        public bool IsForPoint(int x, int y)
+        {
+            return X == x && Y == y;
+        }
+    }
+
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint lpPoint);
 }

@@ -7,7 +7,9 @@ public sealed class GlobalKeyboardHook : IDisposable
 {
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
+    private const int WmKeyUp = 0x0101;
     private const int WmSysKeyDown = 0x0104;
+    private const int WmSysKeyUp = 0x0105;
 
     private readonly HookProc _hookProc;
     private IntPtr _hookHandle = IntPtr.Zero;
@@ -18,7 +20,7 @@ public sealed class GlobalKeyboardHook : IDisposable
         _hookProc = HookCallback;
     }
 
-    public event EventHandler<GlobalKeyEventArgs>? KeyPressed;
+    public event EventHandler<GlobalKeyEventArgs>? KeyAction;
 
     public void Start()
     {
@@ -66,14 +68,25 @@ public sealed class GlobalKeyboardHook : IDisposable
         if (nCode >= 0)
         {
             var message = wParam.ToInt32();
-            if (message is WmKeyDown or WmSysKeyDown)
+            var actionType = TranslateActionType(message);
+            if (actionType is not null)
             {
                 var data = Marshal.PtrToStructure<KbdllHookStruct>(lParam);
-                KeyPressed?.Invoke(this, new GlobalKeyEventArgs(data.VirtualKeyCode));
+                KeyAction?.Invoke(this, new GlobalKeyEventArgs(data.VirtualKeyCode, actionType.Value));
             }
         }
 
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+    }
+
+    private static KeyActionType? TranslateActionType(int message)
+    {
+        return message switch
+        {
+            WmKeyDown or WmSysKeyDown => KeyActionType.Down,
+            WmKeyUp or WmSysKeyUp => KeyActionType.Up,
+            _ => null
+        };
     }
 
     private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);

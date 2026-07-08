@@ -12,6 +12,12 @@ public enum MouseActionType
     LeftButtonUp
 }
 
+public enum KeyActionType
+{
+    Down,
+    Up
+}
+
 public enum GestureDirection
 {
     Right,
@@ -54,7 +60,7 @@ public enum PanelPinMode
 
 public sealed record GlobalMouseEventArgs(MouseActionType ActionType, int X, int Y);
 
-public sealed record GlobalKeyEventArgs(int VirtualKey);
+public sealed record GlobalKeyEventArgs(int VirtualKey, KeyActionType ActionType);
 
 public sealed class PanelCloseRequestEventArgs : EventArgs
 {

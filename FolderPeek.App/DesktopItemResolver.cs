@@ -8,6 +8,7 @@ namespace FolderPeek.App;
 public sealed class DesktopItemResolver
 {
     private readonly string[] _desktopRoots;
+    private IReadOnlyList<DesktopFolderHit>? _cachedSnapshot;
 
     public DesktopItemResolver()
     {
@@ -23,26 +24,24 @@ public sealed class DesktopItemResolver
 
     public IReadOnlyList<string> DesktopRoots => _desktopRoots;
 
+    public void PrimeSnapshot()
+    {
+        _cachedSnapshot = CaptureDesktopFolderHits();
+    }
+
+    public void InvalidateSnapshot()
+    {
+        _cachedSnapshot = null;
+    }
+
     public DesktopFolderHit? TryResolveFolderFromScreenPoint(int x, int y)
     {
-        foreach (var selectedItem in GetSelectedDesktopItems())
-        {
-            if (!selectedItem.Bounds.Contains(x, y))
-            {
-                continue;
-            }
+        return ResolveHitFromSnapshot(GetOrCreateSnapshot(), x, y);
+    }
 
-            foreach (var root in _desktopRoots)
-            {
-                var fullPath = Path.Combine(root, selectedItem.Name);
-                if (Directory.Exists(fullPath))
-                {
-                    return new DesktopFolderHit(selectedItem.Name, fullPath, "desktop-selection-hit", selectedItem.Bounds);
-                }
-            }
-        }
-
-        return null;
+    internal DesktopFolderHit? TryResolveFolderFromSnapshotPoint(int x, int y)
+    {
+        return ResolveHitFromSnapshot(GetOrCreateSnapshot(), x, y);
     }
 
     public string DescribeScreenPoint(int x, int y)
@@ -53,24 +52,38 @@ public sealed class DesktopItemResolver
             return $"坐标=({x},{y})；未找到桌面列表视图。";
         }
 
-        var selectedItems = GetSelectedDesktopItems();
-        if (selectedItems.Count == 0)
+        var items = GetOrCreateSnapshot();
+        if (items.Count == 0)
         {
-            return $"坐标=({x},{y})；当前选中=<none>";
+            return $"坐标=({x},{y})；当前桌面下未命中可展开文件夹。";
         }
 
-        var descriptions = selectedItems
-            .Select(item => $"{item.Name}@({item.Bounds.Left:F0},{item.Bounds.Top:F0},{item.Bounds.Right:F0},{item.Bounds.Bottom:F0})");
+        var hit = ResolveHitFromSnapshot(items, x, y);
+        if (hit is null)
+        {
+            return $"坐标=({x},{y})；桌面文件夹数={items.Count}，当前点位未命中。";
+        }
 
-        return $"坐标=({x},{y})；当前选中={string.Join(", ", descriptions)}";
+        return $"坐标=({x},{y})；命中={hit.DisplayName}@({hit.Bounds.Left:F0},{hit.Bounds.Top:F0},{hit.Bounds.Right:F0},{hit.Bounds.Bottom:F0})";
     }
 
-    private IReadOnlyList<SelectedDesktopItem> GetSelectedDesktopItems()
+    internal static DesktopFolderHit? ResolveHitFromSnapshot(IReadOnlyList<DesktopFolderHit> items, int x, int y)
+    {
+        return items
+            .FirstOrDefault(item => item.Bounds.Contains(x, y));
+    }
+
+    private IReadOnlyList<DesktopFolderHit> GetOrCreateSnapshot()
+    {
+        return _cachedSnapshot ??= CaptureDesktopFolderHits();
+    }
+
+    private IReadOnlyList<DesktopFolderHit> CaptureDesktopFolderHits()
     {
         var listView = FindDesktopListView();
         if (listView == IntPtr.Zero)
         {
-            return Array.Empty<SelectedDesktopItem>();
+            return Array.Empty<DesktopFolderHit>();
         }
 
         AutomationElement? root;
@@ -80,15 +93,15 @@ public sealed class DesktopItemResolver
         }
         catch
         {
-            return Array.Empty<SelectedDesktopItem>();
+            return Array.Empty<DesktopFolderHit>();
         }
 
         if (root is null)
         {
-            return Array.Empty<SelectedDesktopItem>();
+            return Array.Empty<DesktopFolderHit>();
         }
 
-        var items = new List<SelectedDesktopItem>();
+        var items = new List<DesktopFolderHit>();
 
         try
         {
@@ -98,49 +111,35 @@ public sealed class DesktopItemResolver
 
             foreach (AutomationElement listItem in listItems)
             {
-                if (!IsSelected(listItem))
+                var name = listItem.Current.Name?.Trim();
+                var bounds = listItem.Current.BoundingRectangle;
+                if (string.IsNullOrWhiteSpace(name) || bounds.IsEmpty)
                 {
                     continue;
                 }
 
-                var name = listItem.Current.Name?.Trim();
-                var bounds = listItem.Current.BoundingRectangle;
-                if (!string.IsNullOrWhiteSpace(name) && !bounds.IsEmpty)
+                foreach (var rootPath in _desktopRoots)
                 {
-                    items.Add(new SelectedDesktopItem(name, bounds));
+                    var fullPath = Path.Combine(rootPath, name);
+                    if (!Directory.Exists(fullPath))
+                    {
+                        continue;
+                    }
+
+                    items.Add(new DesktopFolderHit(name, fullPath, "desktop-point-hit", bounds));
+                    break;
                 }
             }
         }
         catch
         {
-            return Array.Empty<SelectedDesktopItem>();
+            return Array.Empty<DesktopFolderHit>();
         }
 
         return items
-            .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(item => item.FullPath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToArray();
-    }
-
-    private sealed record SelectedDesktopItem(string Name, Rect Bounds);
-
-    private static bool IsSelected(AutomationElement element)
-    {
-        try
-        {
-            if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var patternObject) &&
-                patternObject is SelectionItemPattern pattern)
-            {
-                return pattern.Current.IsSelected;
-            }
-
-            var value = element.GetCurrentPropertyValue(SelectionItemPattern.IsSelectedProperty, true);
-            return value is bool isSelected && isSelected;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static IntPtr FindDesktopListView()

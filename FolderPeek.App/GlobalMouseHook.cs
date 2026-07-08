@@ -21,6 +21,8 @@ public sealed class GlobalMouseHook : IDisposable
 
     public event EventHandler<GlobalMouseEventArgs>? MouseAction;
 
+    public Func<GlobalMouseEventArgs, bool>? SuppressPredicate { get; set; }
+
     public void Start()
     {
         if (_hookHandle != IntPtr.Zero)
@@ -70,7 +72,13 @@ public sealed class GlobalMouseHook : IDisposable
             if (action is not null)
             {
                 var data = Marshal.PtrToStructure<MsllHookStruct>(lParam);
-                MouseAction?.Invoke(this, new GlobalMouseEventArgs(action.Value, data.Point.X, data.Point.Y));
+                var eventArgs = new GlobalMouseEventArgs(action.Value, data.Point.X, data.Point.Y);
+                var shouldSuppress = SuppressPredicate?.Invoke(eventArgs) == true;
+                MouseAction?.Invoke(this, eventArgs);
+                if (shouldSuppress)
+                {
+                    return new IntPtr(1);
+                }
             }
         }
 
