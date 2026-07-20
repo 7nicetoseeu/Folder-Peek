@@ -14,6 +14,15 @@ NuGet/Migrations/
 .artifacts/
 output/staging/
 output/release/
+output/build/
+output/debug-*.png
+output/imagegen/*.py
+output/imagegen/*-prompt.txt
+output/imagegen/*-source.png
+output/imagegen/folder-peek-gesture-guide*.png
+output/imagegen/folder-peek-four-direction.png
+output/imagegen/folder-peek-sequential-four-direction*.png
+output/imagegen/folder-peek-showcase.png
 output/current-work-summary.md
 FolderPeek.Installer/Payload/
 

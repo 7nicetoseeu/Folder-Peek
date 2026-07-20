@@ -649,7 +649,7 @@
                                     <TextBlock x:Name="OtherVersionText"
                                                Margin="0,3,0,0"
                                                Style="{StaticResource CaptionTextStyle}"
-                                               Text="版本 0.6.15.1" />
+                                               Text="版本 0.6.16" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsRowStyle}">
