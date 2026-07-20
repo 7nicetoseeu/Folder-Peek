@@ -82,7 +82,7 @@ public sealed class TrayIconService : IDisposable
         }
 
         _notifyIcon.BalloonTipTitle = "Folder Peek 已启动";
-        _notifyIcon.BalloonTipText = "程序已驻留托盘。按住 Space，再按住鼠标左键拖拽即可展开桌面文件夹。";
+        _notifyIcon.BalloonTipText = "程序已驻留托盘。可从状态窗口选择文件夹展开方式。";
         _notifyIcon.ShowBalloonTip(1800);
     }
 

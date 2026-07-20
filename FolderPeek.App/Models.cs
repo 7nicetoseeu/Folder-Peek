@@ -9,7 +9,19 @@ public enum MouseActionType
 {
     Move,
     LeftButtonDown,
-    LeftButtonUp
+    LeftButtonUp,
+    MiddleButtonDown,
+    MiddleButtonUp,
+    RightButtonDown,
+    RightButtonUp
+}
+
+public enum FolderExpandMode
+{
+    MiddleDrag,
+    ContextMenu,
+    LongPressLeft,
+    LongPressRight
 }
 
 public enum KeyActionType
@@ -58,7 +70,7 @@ public enum PanelPinMode
     PinnedTopmost
 }
 
-public sealed record GlobalMouseEventArgs(MouseActionType ActionType, int X, int Y);
+public sealed record GlobalMouseEventArgs(MouseActionType ActionType, int X, int Y, IntPtr ExtraInfo = default);
 
 public sealed record GlobalKeyEventArgs(int VirtualKey, KeyActionType ActionType);
 
@@ -85,6 +97,16 @@ public sealed class PanelPinnedChangedEventArgs : EventArgs
 public sealed record DesktopFolderHit(string DisplayName, string FullPath, string Source, Rect Bounds);
 
 public sealed record PanelFolderHit(FolderPanelItem Item, Rect Bounds, int Level, Guid PanelId);
+
+public sealed class PanelHeightPreviewRequestedEventArgs : EventArgs
+{
+    public PanelHeightPreviewRequestedEventArgs(Rect anchorBounds)
+    {
+        AnchorBounds = anchorBounds;
+    }
+
+    public Rect AnchorBounds { get; }
+}
 
 internal static class PanelPinModeExtensions
 {

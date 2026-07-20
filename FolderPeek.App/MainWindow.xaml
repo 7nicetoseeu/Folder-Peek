@@ -180,26 +180,37 @@
                              HorizontalAlignment="Stretch"
                              Stretch="Uniform"
                              StretchDirection="DownOnly">
-                        <Border Width="820"
-                                Height="340"
-                                Background="{DynamicResource SoftSurfaceBrush}"
-                                Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ClipToBounds="True">
-                                <TextBlock HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="64"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           Opacity="0.18"
-                                           Text="&#xE8B7;" />
-                                <Image x:Name="GuidePreviewImage"
-                                       Stretch="UniformToFill" />
-                            </Grid>
-                        </Border>
+                        <Button x:Name="DefaultGestureImageButton"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="切换为默认手势"
+                                Click="DefaultGestureImageButton_OnClick">
+                            <Border Width="820"
+                                    Height="340"
+                                    Background="{DynamicResource SoftSurfaceBrush}"
+                                    Style="{StaticResource SettingsGroupStyle}">
+                                <Grid ClipToBounds="True">
+                                    <TextBlock HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                               FontSize="64"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Opacity="0.18"
+                                               Text="&#xE8B7;" />
+                                    <Image x:Name="GuidePreviewImage"
+                                           Stretch="UniformToFill" />
+                                    <Border x:Name="GuidePreviewDimOverlay"
+                                            Background="#A0000000"
+                                            Visibility="Collapsed" />
+                                </Grid>
+                            </Border>
+                        </Button>
                     </Viewbox>
 
                     <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="切换手势（测试功能）" />
+                               Text="展开方式" />
                     <Border Margin="0,8,0,0"
                             Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
@@ -207,32 +218,31 @@
                                 <StackPanel>
                                     <TextBlock FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="展开方式" />
+                                               Text="触发方式" />
                                     <TextBlock Margin="0,3,0,0"
                                                Style="{StaticResource CaptionTextStyle}"
-                                               Text="选择后仅更新此页面的预览状态。" />
+                                               Text="选择后立即应用并保存。未选择时保持兼容的 Space + 左键拖动。" />
                                     <Border Margin="0,14,0,0"
                                             Padding="4"
                                             Style="{StaticResource SegmentedControlChromeStyle}">
                                         <UniformGrid Columns="2">
                                             <RadioButton x:Name="GestureMiddleDragButton"
-                                                         GroupName="GesturePreview"
+                                                         GroupName="FolderExpandMode"
                                                          Checked="GesturePreviewButton_OnChecked"
                                                          Style="{StaticResource SegmentedRadioButtonStyle}"
-                                                         Content="中键拖动"
-                                                         IsChecked="True" />
+                                                         Content="中键拖动" />
                                             <RadioButton x:Name="GestureContextMenuButton"
-                                                         GroupName="GesturePreview"
+                                                         GroupName="FolderExpandMode"
                                                          Checked="GesturePreviewButton_OnChecked"
                                                          Style="{StaticResource SegmentedRadioButtonStyle}"
                                                          Content="融合进右键菜单" />
                                             <RadioButton x:Name="GestureLongPressLeftButton"
-                                                         GroupName="GesturePreview"
+                                                         GroupName="FolderExpandMode"
                                                          Checked="GesturePreviewButton_OnChecked"
                                                          Style="{StaticResource SegmentedRadioButtonStyle}"
                                                          Content="长按左键" />
                                             <RadioButton x:Name="GestureLongPressRightButton"
-                                                         GroupName="GesturePreview"
+                                                         GroupName="FolderExpandMode"
                                                          Checked="GesturePreviewButton_OnChecked"
                                                          Style="{StaticResource SegmentedRadioButtonStyle}"
                                                          Content="长按右键" />
@@ -241,7 +251,7 @@
                                     <TextBlock x:Name="GesturePreviewSummaryText"
                                                Margin="0,12,0,0"
                                                Style="{StaticResource CaptionTextStyle}"
-                                               Text="当前预览：中键拖动。不会改变实际手势。" />
+                                               Text="当前方式：Space + 左键拖动（兼容模式）。" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -304,6 +314,61 @@
                                 </Grid>
                             </Border>
                         </StackPanel>
+                    </Border>
+
+                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="展开框" />
+                    <Border Margin="0,8,0,22"
+                            Style="{StaticResource SettingsGroupStyle}">
+                        <Border Style="{StaticResource SettingsLastRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="360" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="展开框高度" />
+                                    <TextBlock x:Name="PanelVisibleItemCountSummaryText"
+                                               Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="超过 10 个项目后，展开框内部滚动。" />
+                                </StackPanel>
+                                <Grid Grid.Column="1"
+                                      Margin="18,0,0,0"
+                                      VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="56" />
+                                            <ColumnDefinition Width="104" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="PanelVisibleItemCountSlider"
+                                            Minimum="4"
+                                            Maximum="20"
+                                            TickFrequency="1"
+                                            IsSnapToTickEnabled="True"
+                                            SmallChange="1"
+                                            LargeChange="2"
+                                            ValueChanged="PanelVisibleItemCountSlider_OnValueChanged" />
+                                        <TextBlock x:Name="PanelVisibleItemCountValueText"
+                                                   Grid.Column="1"
+                                               Margin="12,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextAlignment="Right"
+                                               FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   Text="10 个" />
+                                        <Button x:Name="PanelHeightPreviewButton"
+                                                Grid.Column="2"
+                                                Margin="12,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource CompactCommandButtonStyle}"
+                                                Click="PanelHeightPreviewButton_OnClick"
+                                                Content="预览高度" />
+                                    </Grid>
+                            </Grid>
+                        </Border>
                     </Border>
 
                     <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
@@ -525,7 +590,7 @@
                                                   Style="{StaticResource SwitchToggleStyle}" />
                                 </Grid>
                             </Border>
-                            <Border Style="{StaticResource SettingsRowStyle}">
+                            <Border Style="{StaticResource SettingsLastRowStyle}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -546,47 +611,6 @@
                                                   Checked="TrayTipsToggle_OnCheckedChanged"
                                                   Unchecked="TrayTipsToggle_OnCheckedChanged"
                                                   Style="{StaticResource SwitchToggleStyle}" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource SettingsLastRowStyle}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="260" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                                   Text="展开框高度" />
-                                        <TextBlock x:Name="PanelVisibleItemCountSummaryText"
-                                                   Margin="0,3,0,0"
-                                                   Style="{StaticResource CaptionTextStyle}"
-                                                   Text="超过 10 个项目后，展开框内部滚动。" />
-                                    </StackPanel>
-                                    <Grid Grid.Column="1"
-                                          Margin="18,0,0,0"
-                                          VerticalAlignment="Center">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="56" />
-                                        </Grid.ColumnDefinitions>
-                                        <Slider x:Name="PanelVisibleItemCountSlider"
-                                                Minimum="4"
-                                                Maximum="20"
-                                                TickFrequency="1"
-                                                IsSnapToTickEnabled="True"
-                                                SmallChange="1"
-                                                LargeChange="2"
-                                                ValueChanged="PanelVisibleItemCountSlider_OnValueChanged" />
-                                        <TextBlock x:Name="PanelVisibleItemCountValueText"
-                                                   Grid.Column="1"
-                                                   Margin="12,0,0,0"
-                                                   VerticalAlignment="Center"
-                                                   TextAlignment="Right"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                                   Text="10 个" />
-                                    </Grid>
                                 </Grid>
                             </Border>
                         </StackPanel>

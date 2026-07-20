@@ -41,6 +41,7 @@ public sealed class PanelManager : IDisposable
         _debugWindow = debugWindow;
         _settingsService = settingsService;
         _settingsService.PanelVisibleItemCountChanged += SettingsService_OnPanelVisibleItemCountChanged;
+        _settingsService.ExpandModeChanged += SettingsService_OnExpandModeChanged;
         var iconProvider = new ShellIconProvider();
         _contentProvider = new FolderContentProvider(iconProvider, _debugWindow.AddLog);
         _shellLauncher = new ShellLauncher();
@@ -119,6 +120,7 @@ public sealed class PanelManager : IDisposable
     public void Dispose()
     {
         _settingsService.PanelVisibleItemCountChanged -= SettingsService_OnPanelVisibleItemCountChanged;
+        _settingsService.ExpandModeChanged -= SettingsService_OnExpandModeChanged;
         CloseAllPanels(PanelCloseReason.Dispose);
     }
 
@@ -226,6 +228,7 @@ public sealed class PanelManager : IDisposable
                 PanelId = contextId,
                 Level = level,
                 VisibleItemLimit = _settingsService.PanelVisibleItemCount,
+                RequireShortFolderClick = RequiresShortFolderClick(),
                 Topmost = ShouldUseTopMost(initialPinMode)
             };
             panel.ShowLoadingState(displayName, fullPath);
@@ -329,6 +332,20 @@ public sealed class PanelManager : IDisposable
         {
             context.Window.SetVisibleItemLimit(_settingsService.PanelVisibleItemCount);
         }
+    }
+
+    private void SettingsService_OnExpandModeChanged(object? sender, EventArgs e)
+    {
+        var requireShortClick = RequiresShortFolderClick();
+        foreach (var context in _contexts)
+        {
+            context.Window.RequireShortFolderClick = requireShortClick;
+        }
+    }
+
+    private bool RequiresShortFolderClick()
+    {
+        return _settingsService.ExpandMode is FolderExpandMode.LongPressLeft or FolderExpandMode.LongPressRight;
     }
 
     private void OnPanelFileRequested(object? sender, string fullPath)

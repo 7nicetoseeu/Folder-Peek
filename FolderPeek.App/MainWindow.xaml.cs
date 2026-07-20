@@ -15,7 +15,9 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _isSyncingThemeSelection;
     private bool _isSyncingBehaviorSelection;
+    private bool _isSyncingGestureSelection;
     private bool _isBehaviorControlsInitialized;
+    private bool _isHookEnabled;
 
     public MainWindow(AppThemeService themeService, AppSettingsService settingsService)
     {
@@ -34,6 +36,7 @@ public partial class MainWindow : Window
         SetHookState(false);
         SyncThemeControls();
         SyncBehaviorControls();
+        SyncGestureControls();
         _isBehaviorControlsInitialized = true;
         ResetGesture();
     }
@@ -48,8 +51,11 @@ public partial class MainWindow : Window
 
     public event EventHandler? ClosePanelsRequested;
 
+    public event EventHandler<PanelHeightPreviewRequestedEventArgs>? PanelHeightPreviewRequested;
+
     public void SetHookState(bool isEnabled)
     {
+        _isHookEnabled = isEnabled;
         HookStateText.Text = isEnabled ? "监听状态：运行中" : "监听状态：已暂停";
         HomeStatusBadgeText.Text = isEnabled ? "运行中" : "已暂停";
         HomeStatusBadgeBorder.Background = isEnabled
@@ -62,7 +68,7 @@ public partial class MainWindow : Window
             ? "Folder Peek 正在后台运行"
             : "Folder Peek 已暂停监听";
         HomeStatusDetailText.Text = isEnabled
-            ? "按住 Space，再按住鼠标左键拖动，就可以从桌面文件夹展开内容。"
+            ? GetExpandModeDescription(_settingsService.ExpandMode)
             : "当前不会响应手势。你可以在这里或托盘里恢复监听。";
         ToggleListeningButtonIcon.Text = isEnabled ? "\uE769" : "\uE768";
         ToggleListeningButtonLabel.Text = isEnabled ? "暂停监听" : "恢复监听";
@@ -222,23 +228,53 @@ public partial class MainWindow : Window
         AddActivity($"展开框高度已设置为显示 {itemCount} 个项目。");
     }
 
-    private void GesturePreviewButton_OnChecked(object sender, RoutedEventArgs e)
+    private void PanelHeightPreviewButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (GesturePreviewSummaryText is null)
+        if (PanelHeightPreviewButton is null)
         {
             return;
         }
 
-        var gestureName = sender switch
+        var topLeft = PanelHeightPreviewButton.PointToScreen(new System.Windows.Point(0, 0));
+        var bottomRight = PanelHeightPreviewButton.PointToScreen(new System.Windows.Point(
+            PanelHeightPreviewButton.ActualWidth,
+            PanelHeightPreviewButton.ActualHeight));
+        PanelHeightPreviewRequested?.Invoke(this, new PanelHeightPreviewRequestedEventArgs(new Rect(topLeft, bottomRight)));
+    }
+
+    private void GesturePreviewButton_OnChecked(object sender, RoutedEventArgs e)
+    {
+        if (_isSyncingGestureSelection || GesturePreviewSummaryText is null)
         {
-            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureMiddleDragButton) => "中键拖动",
-            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureContextMenuButton) => "融合进右键菜单",
-            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureLongPressLeftButton) => "长按左键",
-            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureLongPressRightButton) => "长按右键",
-            _ => "中键拖动"
+            return;
+        }
+
+        var expandMode = sender switch
+        {
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureMiddleDragButton) => FolderExpandMode.MiddleDrag,
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureContextMenuButton) => FolderExpandMode.ContextMenu,
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureLongPressLeftButton) => FolderExpandMode.LongPressLeft,
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureLongPressRightButton) => FolderExpandMode.LongPressRight,
+            _ => FolderExpandMode.MiddleDrag
         };
 
-        GesturePreviewSummaryText.Text = $"当前预览：{gestureName}。不会改变实际手势。";
+        _settingsService.SetExpandMode(expandMode);
+        SyncGestureControls();
+        SetHookState(_isHookEnabled);
+        AddActivity($"已切换展开方式：{GetExpandModeDisplayText(expandMode)}。");
+    }
+
+    private void DefaultGestureImageButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_settingsService.ExpandMode is null)
+        {
+            return;
+        }
+
+        _settingsService.UseDefaultExpandMode();
+        SyncGestureControls();
+        SetHookState(_isHookEnabled);
+        AddActivity("已切换为默认手势：Space + 左键拖动。");
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -371,6 +407,82 @@ public partial class MainWindow : Window
             : "保留托盘图标，但不弹出气泡提示。";
         PanelVisibleItemCountValueText.Text = $"{_settingsService.PanelVisibleItemCount} 个";
         PanelVisibleItemCountSummaryText.Text = $"超过 {_settingsService.PanelVisibleItemCount} 个项目后，展开框内部滚动。";
+    }
+
+    private void SyncGestureControls()
+    {
+        if (GesturePreviewSummaryText is null ||
+            GestureMiddleDragButton is null ||
+            GestureContextMenuButton is null ||
+            GestureLongPressLeftButton is null ||
+            GestureLongPressRightButton is null)
+        {
+            return;
+        }
+
+        _isSyncingGestureSelection = true;
+        GestureMiddleDragButton.IsChecked = _settingsService.ExpandMode == FolderExpandMode.MiddleDrag;
+        GestureContextMenuButton.IsChecked = _settingsService.ExpandMode == FolderExpandMode.ContextMenu;
+        GestureLongPressLeftButton.IsChecked = _settingsService.ExpandMode == FolderExpandMode.LongPressLeft;
+        GestureLongPressRightButton.IsChecked = _settingsService.ExpandMode == FolderExpandMode.LongPressRight;
+        _isSyncingGestureSelection = false;
+
+        GesturePreviewSummaryText.Text = GetExpandModeUsageText(_settingsService.ExpandMode);
+        SyncDefaultGestureImage();
+    }
+
+    private void SyncDefaultGestureImage()
+    {
+        if (GuidePreviewImage is null ||
+            GuidePreviewDimOverlay is null ||
+            DefaultGestureImageButton is null)
+        {
+            return;
+        }
+
+        var isDefaultGesture = _settingsService.ExpandMode is null;
+        GuidePreviewImage.Opacity = isDefaultGesture ? 1 : 0.55;
+        GuidePreviewImage.Effect = isDefaultGesture
+            ? null
+            : new System.Windows.Media.Effects.BlurEffect { Radius = 5 };
+        GuidePreviewDimOverlay.Visibility = isDefaultGesture ? Visibility.Collapsed : Visibility.Visible;
+        DefaultGestureImageButton.ToolTip = isDefaultGesture ? "当前默认手势" : "切换为默认手势";
+    }
+
+    private static string GetExpandModeDisplayText(FolderExpandMode? expandMode)
+    {
+        return expandMode switch
+        {
+            FolderExpandMode.MiddleDrag => "中键拖动",
+            FolderExpandMode.ContextMenu => "融合进右键菜单",
+            FolderExpandMode.LongPressLeft => "长按左键",
+            FolderExpandMode.LongPressRight => "长按右键",
+            _ => "Space + 左键拖动（兼容模式）"
+        };
+    }
+
+    private static string GetExpandModeDescription(FolderExpandMode? expandMode)
+    {
+        return expandMode switch
+        {
+            FolderExpandMode.MiddleDrag => "按住鼠标中键向任意方向拖动，即可从桌面文件夹展开内容。",
+            FolderExpandMode.ContextMenu => "在文件夹右键菜单的“显示更多选项”中选择“使用 Folder Peek 展开”。",
+            FolderExpandMode.LongPressLeft => "在桌面文件夹上静止长按左键，达到 500ms 后即可展开内容。",
+            FolderExpandMode.LongPressRight => "在桌面文件夹上静止长按右键，达到 500ms 后即可展开内容。",
+            _ => "按住 Space，再按住鼠标左键拖动，就可以从桌面文件夹展开内容。"
+        };
+    }
+
+    private static string GetExpandModeUsageText(FolderExpandMode? expandMode)
+    {
+        return expandMode switch
+        {
+            FolderExpandMode.MiddleDrag => "中键拖动：级联面板支持中键拖动和左键单击展开。",
+            FolderExpandMode.ContextMenu => "融合进右键菜单：从菜单打开首层，级联面板支持左键单击展开。",
+            FolderExpandMode.LongPressLeft => "长按左键：级联面板仅接受短左键单击；按住达到 500ms 不展开。",
+            FolderExpandMode.LongPressRight => "长按右键：级联面板仅接受短左键单击；按住达到 500ms 不展开。",
+            _ => "Space + 左键拖动（兼容模式）：级联面板支持左键单击展开。"
+        };
     }
 
     private System.Windows.Media.Brush GetBrush(string key)

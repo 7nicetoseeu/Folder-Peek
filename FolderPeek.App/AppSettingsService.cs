@@ -21,13 +21,18 @@ public sealed class AppSettingsService
         var settings = LoadSettings();
         ShowTrayTips = settings.ShowTrayTips;
         PanelVisibleItemCount = settings.PanelVisibleItemCount;
+        ExpandMode = settings.ExpandMode;
     }
 
     public bool ShowTrayTips { get; private set; } = true;
 
     public int PanelVisibleItemCount { get; private set; } = DefaultPanelVisibleItemCount;
 
+    public FolderExpandMode? ExpandMode { get; private set; }
+
     public event EventHandler? PanelVisibleItemCountChanged;
+
+    public event EventHandler? ExpandModeChanged;
 
     public bool IsLaunchAtStartupEnabled()
     {
@@ -97,6 +102,30 @@ public sealed class AppSettingsService
         PanelVisibleItemCountChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetExpandMode(FolderExpandMode expandMode)
+    {
+        if (ExpandMode == expandMode)
+        {
+            return;
+        }
+
+        ExpandMode = expandMode;
+        SaveSettings();
+        ExpandModeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void UseDefaultExpandMode()
+    {
+        if (ExpandMode is null)
+        {
+            return;
+        }
+
+        ExpandMode = null;
+        SaveSettings();
+        ExpandModeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private AppSettings LoadSettings()
     {
         try
@@ -110,7 +139,8 @@ public sealed class AppSettingsService
             var settings = JsonSerializer.Deserialize<AppSettingsFile>(json);
             return new AppSettings(
                 settings?.ShowTrayTips ?? true,
-                ClampPanelVisibleItemCount(settings?.PanelVisibleItemCount ?? DefaultPanelVisibleItemCount));
+                ClampPanelVisibleItemCount(settings?.PanelVisibleItemCount ?? DefaultPanelVisibleItemCount),
+                settings?.ExpandMode);
         }
         catch
         {
@@ -126,7 +156,8 @@ public sealed class AppSettingsService
             var settings = new AppSettingsFile
             {
                 ShowTrayTips = ShowTrayTips,
-                PanelVisibleItemCount = PanelVisibleItemCount
+                PanelVisibleItemCount = PanelVisibleItemCount,
+                ExpandMode = ExpandMode
             };
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_settingsPath, json);
@@ -153,11 +184,12 @@ public sealed class AppSettingsService
         return Math.Clamp(itemCount, MinPanelVisibleItemCount, MaxPanelVisibleItemCount);
     }
 
-    private sealed record AppSettings(bool ShowTrayTips, int PanelVisibleItemCount)
+    private sealed record AppSettings(bool ShowTrayTips, int PanelVisibleItemCount, FolderExpandMode? ExpandMode)
     {
         public static AppSettings Default { get; } = new(
             ShowTrayTips: true,
-            PanelVisibleItemCount: DefaultPanelVisibleItemCount);
+            PanelVisibleItemCount: DefaultPanelVisibleItemCount,
+            ExpandMode: null);
     }
 
     private sealed class AppSettingsFile
@@ -165,5 +197,7 @@ public sealed class AppSettingsService
         public bool? ShowTrayTips { get; set; }
 
         public int? PanelVisibleItemCount { get; set; }
+
+        public FolderExpandMode? ExpandMode { get; set; }
     }
 }

@@ -29,6 +29,7 @@ public partial class FolderPanelWindow : Window
     private bool _closeAnimationStarted;
     private DispatcherTimer? _noticeTimer;
     private WpfPoint? _mouseDownPoint;
+    private DateTime? _mouseDownAtUtc;
     private FolderPanelItem? _mouseDownItem;
     private bool _suppressMouseUpAction;
     private PanelPinMode _currentPinMode = PanelPinMode.None;
@@ -45,6 +46,8 @@ public partial class FolderPanelWindow : Window
     public int Level { get; set; }
 
     public int VisibleItemLimit { get; set; } = AppSettingsService.DefaultPanelVisibleItemCount;
+
+    public bool RequireShortFolderClick { get; set; }
 
     public event EventHandler<PanelCloseRequestEventArgs>? CloseRequested;
 
@@ -335,6 +338,7 @@ public partial class FolderPanelWindow : Window
     {
         _suppressMouseUpAction = false;
         _mouseDownPoint = e.GetPosition(ItemList);
+        _mouseDownAtUtc = DateTime.UtcNow;
         _mouseDownItem = ItemsControl.ContainerFromElement(ItemList, e.OriginalSource as DependencyObject) is WpfListViewItem container
             ? container.DataContext as FolderPanelItem
             : null;
@@ -440,6 +444,13 @@ public partial class FolderPanelWindow : Window
             return false;
         }
 
+        if (RequireShortFolderClick &&
+            _mouseDownAtUtc is not null &&
+            DateTime.UtcNow - _mouseDownAtUtc.Value >= TimeSpan.FromMilliseconds(500))
+        {
+            return false;
+        }
+
         var releasePoint = e.GetPosition(ItemList);
         var deltaX = releasePoint.X - _mouseDownPoint.Value.X;
         var deltaY = releasePoint.Y - _mouseDownPoint.Value.Y;
@@ -449,6 +460,7 @@ public partial class FolderPanelWindow : Window
     private void ResetPointerInteraction()
     {
         _mouseDownPoint = null;
+        _mouseDownAtUtc = null;
         _mouseDownItem = null;
         _suppressMouseUpAction = false;
     }

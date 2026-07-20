@@ -9,6 +9,10 @@ public sealed class GlobalMouseHook : IDisposable
     private const int WmMouseMove = 0x0200;
     private const int WmLButtonDown = 0x0201;
     private const int WmLButtonUp = 0x0202;
+    private const int WmRButtonDown = 0x0204;
+    private const int WmRButtonUp = 0x0205;
+    private const int WmMButtonDown = 0x0207;
+    private const int WmMButtonUp = 0x0208;
 
     private readonly HookProc _hookProc;
     private IntPtr _hookHandle = IntPtr.Zero;
@@ -72,7 +76,7 @@ public sealed class GlobalMouseHook : IDisposable
             if (action is not null)
             {
                 var data = Marshal.PtrToStructure<MsllHookStruct>(lParam);
-                var eventArgs = new GlobalMouseEventArgs(action.Value, data.Point.X, data.Point.Y);
+                var eventArgs = new GlobalMouseEventArgs(action.Value, data.Point.X, data.Point.Y, data.ExtraInfo);
                 var shouldSuppress = SuppressPredicate?.Invoke(eventArgs) == true;
                 MouseAction?.Invoke(this, eventArgs);
                 if (shouldSuppress)
@@ -92,6 +96,10 @@ public sealed class GlobalMouseHook : IDisposable
             WmMouseMove => MouseActionType.Move,
             WmLButtonDown => MouseActionType.LeftButtonDown,
             WmLButtonUp => MouseActionType.LeftButtonUp,
+            WmMButtonDown => MouseActionType.MiddleButtonDown,
+            WmMButtonUp => MouseActionType.MiddleButtonUp,
+            WmRButtonDown => MouseActionType.RightButtonDown,
+            WmRButtonUp => MouseActionType.RightButtonUp,
             _ => null
         };
     }
