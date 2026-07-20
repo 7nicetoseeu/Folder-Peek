@@ -6,112 +6,495 @@
         mc:Ignorable="d"
         Title="Folder Peek"
         Width="1040"
-        Height="720"
+        Height="660"
         MinWidth="920"
         MinHeight="620"
         FontFamily="{StaticResource AppFontFamily}"
         Background="{DynamicResource PageBackgroundBrush}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
-    <TabControl Margin="18"
-                TabStripPlacement="Left"
+    <TabControl Margin="0"
+                TabStripPlacement="Top"
+                KeyboardNavigation.TabNavigation="Local"
                 Background="Transparent"
                 BorderThickness="0">
+        <TabControl.Template>
+            <ControlTemplate TargetType="TabControl">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="56" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource DividerBrush}"
+                            BorderThickness="0,0,0,1">
+                        <Grid Margin="24,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Width="26"
+                                   Height="26"
+                                   VerticalAlignment="Center"
+                                   Source="{Binding Icon, RelativeSource={RelativeSource AncestorType=Window}}"
+                                   Stretch="Uniform" />
+                            <TextBlock Grid.Column="1"
+                                       Margin="9,0,0,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Text="Folder Peek" />
+                            <TabPanel Grid.Column="2"
+                                      Margin="32,0,0,0"
+                                      VerticalAlignment="Stretch"
+                                      IsItemsHost="True" />
+                        </Grid>
+                    </Border>
+                    <ContentPresenter Grid.Row="1"
+                                      ContentSource="SelectedContent" />
+                </Grid>
+            </ControlTemplate>
+        </TabControl.Template>
         <TabControl.Resources>
-            <Style TargetType="TabItem" BasedOn="{StaticResource SettingsNavTabItemStyle}" />
+            <Style TargetType="TabItem" BasedOn="{StaticResource PageTabItemStyle}" />
             <Style TargetType="ScrollBar" BasedOn="{StaticResource PanelScrollBarStyle}" />
         </TabControl.Resources>
 
         <TabItem Header="主页">
-            <ScrollViewer Padding="28,0,28,28"
+            <ScrollViewer Padding="28,24,28,28"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled">
                 <StackPanel MaxWidth="820">
                     <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
-                               Text="Folder Peek" />
-                    <Border x:Name="HomeStatusBadgeBorder"
-                            Margin="0,18,0,0"
-                            Style="{StaticResource StatusBadgeStyle}">
-                        <TextBlock x:Name="HomeStatusBadgeText"
-                                   Foreground="{DynamicResource SuccessBrush}"
-                                   FontWeight="SemiBold"
-                                   Text="运行中" />
+                               Text="主页" />
+                    <TextBlock Margin="0,24,0,0"
+                               Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="快速操作" />
+                    <WrapPanel Margin="0,8,0,22">
+                        <Button Margin="0,0,8,0"
+                                Style="{StaticResource CompactCommandButtonStyle}"
+                                Click="ToggleListeningButton_OnClick">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="ToggleListeningButtonIcon"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="14"
+                                           Text="&#xE769;" />
+                                <TextBlock x:Name="ToggleListeningButtonLabel"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Text="暂停监听" />
+                            </StackPanel>
+                        </Button>
+                        <Button Margin="0,0,8,0"
+                                Style="{StaticResource CompactCommandButtonStyle}"
+                                Click="ClosePanelsButton_OnClick">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="14"
+                                           Text="&#xE8BB;" />
+                                <TextBlock VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Text="关闭全部面板" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource CompactCommandButtonStyle}"
+                                Click="ShowDesktopInfoButton_OnClick">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="14"
+                                           Text="&#xE72C;" />
+                                <TextBlock VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Text="刷新桌面路径" />
+                            </StackPanel>
+                        </Button>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="功能特色" />
+                    <Border Margin="0,8,0,0"
+                            Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
+                            <Border Style="{StaticResource SettingsRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="桌面文件夹快速预览" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="不打开资源管理器，也能从桌面文件夹直接拉出内容面板。" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="多层级联展开" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="面板内的子文件夹支持继续拖动展开，适合顺着目录快速钻取。" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="方向感知布局" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="向左、向右、向上或向下拖动时，面板会尽量沿拖动方向展开。" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsLastRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="托盘常驻与主题适配" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="关闭主窗口后仍可在托盘运行，并支持浅色、深色和跟随系统。" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </Border>
-                    <TextBlock x:Name="HomeStatusTitleText"
-                               Margin="0,16,0,0"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}"
-                               Text="Folder Peek 正在后台运行" />
-                    <TextBlock x:Name="HomeStatusDetailText"
-                               Margin="0,6,0,24"
-                               Style="{StaticResource SecondaryBodyTextStyle}"
-                               TextWrapping="Wrap"
-                               Text="按住 Space，再按住鼠标左键拖动，就可以从桌面文件夹展开内容。" />
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="使用说明">
+            <ScrollViewer Padding="28,24,28,28"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel MaxWidth="820">
+                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
+                               Text="使用说明" />
+
+                    <Viewbox Margin="0,24,0,22"
+                             HorizontalAlignment="Stretch"
+                             Stretch="Uniform"
+                             StretchDirection="DownOnly">
+                        <Border Width="820"
+                                Height="340"
+                                Background="{DynamicResource SoftSurfaceBrush}"
+                                Style="{StaticResource SettingsGroupStyle}">
+                            <Grid ClipToBounds="True">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="64"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           Opacity="0.18"
+                                           Text="&#xE8B7;" />
+                                <Image x:Name="GuidePreviewImage"
+                                       Stretch="UniformToFill" />
+                            </Grid>
+                        </Border>
+                    </Viewbox>
 
                     <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="快速操作" />
-                    <Border Margin="0,8,0,22"
-                            Padding="6"
+                               Text="切换手势（测试功能）" />
+                    <Border Margin="0,8,0,0"
                             Style="{StaticResource SettingsGroupStyle}">
-                        <UniformGrid Columns="3">
-                            <Button Margin="0,0,6,0"
-                                    Style="{StaticResource SettingsTileCommandButtonStyle}"
-                                    Click="ToggleListeningButton_OnClick">
+                        <StackPanel>
+                            <Border Style="{StaticResource SettingsLastRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="展开方式" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="选择后仅更新此页面的预览状态。" />
+                                    <Border Margin="0,14,0,0"
+                                            Padding="4"
+                                            Style="{StaticResource SegmentedControlChromeStyle}">
+                                        <UniformGrid Columns="2">
+                                            <RadioButton x:Name="GestureMiddleDragButton"
+                                                         GroupName="GesturePreview"
+                                                         Checked="GesturePreviewButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="中键拖动"
+                                                         IsChecked="True" />
+                                            <RadioButton x:Name="GestureContextMenuButton"
+                                                         GroupName="GesturePreview"
+                                                         Checked="GesturePreviewButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="融合进右键菜单" />
+                                            <RadioButton x:Name="GestureLongPressLeftButton"
+                                                         GroupName="GesturePreview"
+                                                         Checked="GesturePreviewButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="长按左键" />
+                                            <RadioButton x:Name="GestureLongPressRightButton"
+                                                         GroupName="GesturePreview"
+                                                         Checked="GesturePreviewButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="长按右键" />
+                                        </UniformGrid>
+                                    </Border>
+                                    <TextBlock x:Name="GesturePreviewSummaryText"
+                                               Margin="0,12,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="当前预览：中键拖动。不会改变实际手势。" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="外观">
+            <ScrollViewer Padding="28,24,28,28"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel MaxWidth="760">
+                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
+                               Text="外观" />
+
+                    <TextBlock Margin="0,24,0,0"
+                               Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="主题" />
+                    <Border Margin="0,8,0,22"
+                            Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
+                            <Border Style="{StaticResource SettingsLastRowStyle}">
                                 <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock x:Name="ToggleListeningButtonLabel"
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="320" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   Text="原主题模式" />
+                                        <TextBlock x:Name="ThemeModeSummaryText"
+                                                   Margin="0,3,0,0"
+                                                   Style="{StaticResource CaptionTextStyle}"
+                                                   Text="当前模式：跟随系统（当前浅色）" />
+                                    </StackPanel>
+                                    <Border Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SegmentedControlChromeStyle}">
+                                        <UniformGrid Columns="3">
+                                            <RadioButton x:Name="ThemeFollowSystemButton"
+                                                         GroupName="ThemeMode"
+                                                         Checked="ThemeModeButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="跟随系统" />
+                                            <RadioButton x:Name="ThemeLightButton"
+                                                         GroupName="ThemeMode"
+                                                         Checked="ThemeModeButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="浅色" />
+                                            <RadioButton x:Name="ThemeDarkButton"
+                                                         GroupName="ThemeMode"
+                                                         Checked="ThemeModeButton_OnChecked"
+                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
+                                                         Content="深色" />
+                                        </UniformGrid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="效果预览" />
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Text="深色效果" />
+                            <Border Height="248"
+                                    Margin="0,8,0,0"
+                                    Background="{DynamicResource SoftSurfaceBrush}"
+                                    ClipToBounds="True"
+                                    Style="{StaticResource SettingsGroupStyle}">
+                                <Image x:Name="DarkThemePreviewImage"
+                                       Stretch="UniformToFill" />
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Text="浅色效果" />
+                            <Border Height="248"
+                                    Margin="0,8,0,0"
+                                    Background="{DynamicResource SoftSurfaceBrush}"
+                                    ClipToBounds="True"
+                                    Style="{StaticResource SettingsGroupStyle}">
+                                <Image x:Name="LightThemePreviewImage"
+                                       Stretch="UniformToFill" />
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="开发">
+            <ScrollViewer Padding="28,24,28,28"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel MaxWidth="860">
+                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
+                               Text="开发" />
+
+                    <TextBlock Margin="0,24,0,0"
+                               Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="状态" />
+                    <Border Margin="0,8,0,22"
+                            Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
+                            <Border Style="{StaticResource SettingsRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="当前状态" />
+                                    <TextBlock x:Name="HookStateText"
+                                               Margin="0,6,0,0"
+                                               Text="监听状态：未启动" />
+                                    <TextBlock x:Name="TrackingStateText"
+                                               Margin="0,4,0,0"
+                                               Text="手势状态：空闲" />
+                                    <TextBlock x:Name="DirectionText"
+                                               Margin="0,4,0,0"
+                                               Text="方向：-" />
+                                    <TextBlock x:Name="DistanceText"
+                                               Margin="0,4,0,0"
+                                               Text="拖动距离：0 px" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsLastRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="手势起点" />
+                                    <TextBlock x:Name="FolderNameText"
+                                               Margin="0,6,0,0"
+                                               Text="名称：-" />
+                                    <TextBlock x:Name="FolderPathText"
+                                               Margin="0,4,0,0"
+                                               TextWrapping="Wrap"
+                                               Text="路径：-" />
+                                    <TextBlock x:Name="FolderSourceText"
+                                               Margin="0,4,0,0"
+                                               Text="来源：-" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="开发操作" />
+                    <WrapPanel Margin="0,8,0,22">
+                        <Button Margin="0,0,8,0"
+                                Style="{StaticResource CompactCommandButtonStyle}"
+                                Click="ClearLogButton_OnClick">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Margin="0,0,8,0"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="&#xE74D;" />
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="清空日志" />
+                            </StackPanel>
+                        </Button>
+                        <Button Margin="0,0,8,0"
+                                Style="{StaticResource CompactCommandButtonStyle}"
+                                Click="ShowDesktopInfoButton_OnClick">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Margin="0,0,8,0"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="&#xE72C;" />
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="刷新桌面路径" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource CompactCommandButtonStyle}"
+                                Click="ToggleListeningButton_OnClick">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Margin="0,0,8,0"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="&#xE768;" />
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="暂停/恢复" />
+                            </StackPanel>
+                        </Button>
+                    </WrapPanel>
+
+                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="事件日志" />
+                    <Border Margin="0,8,0,0"
+                            Padding="12"
+                            Style="{StaticResource SettingsGroupStyle}">
+                        <ListBox x:Name="LogList"
+                                 MinHeight="280"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 FontFamily="Consolas"
+                                 FontSize="13"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ItemsSource="{Binding LogItems}" />
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="其他">
+            <ScrollViewer Padding="28,24,28,28"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel MaxWidth="760">
+                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
+                               Text="其他" />
+
+                    <TextBlock Margin="0,24,0,0"
+                               Style="{StaticResource SettingsGroupTitleStyle}"
+                               Text="运行状态" />
+                    <Border Margin="0,8,0,22"
+                            Style="{StaticResource SettingsGroupStyle}">
+                        <Border Style="{StaticResource SettingsLastRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="HomeStatusTitleText"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="暂停监听" />
-                                    <TextBlock Grid.Row="1"
-                                               Margin="0,5,0,0"
+                                               Text="Folder Peek 正在后台运行" />
+                                    <TextBlock x:Name="HomeStatusDetailText"
+                                               Margin="0,3,16,0"
                                                Style="{StaticResource CaptionTextStyle}"
                                                TextWrapping="Wrap"
-                                               Text="停止或恢复手势响应" />
-                                </Grid>
-                            </Button>
-
-                            <Button Margin="0,0,6,0"
-                                    Style="{StaticResource SettingsTileCommandButtonStyle}"
-                                    Click="ClosePanelsButton_OnClick">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="关闭全部面板" />
-                                    <TextBlock Grid.Row="1"
-                                               Margin="0,5,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               TextWrapping="Wrap"
-                                               Text="收起当前展开层级" />
-                                </Grid>
-                            </Button>
-
-                            <Button Style="{StaticResource SettingsTileCommandButtonStyle}"
-                                    Click="ShowDesktopInfoButton_OnClick">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="刷新桌面路径" />
-                                    <TextBlock Grid.Row="1"
-                                               Margin="0,5,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               TextWrapping="Wrap"
-                                               Text="重新读取桌面目录" />
-                                </Grid>
-                            </Button>
-                        </UniformGrid>
+                                               Text="按住 Space，再按住鼠标左键拖动，就可以从桌面文件夹展开内容。" />
+                                </StackPanel>
+                                <Border x:Name="HomeStatusBadgeBorder"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource StatusBadgeStyle}">
+                                    <TextBlock x:Name="HomeStatusBadgeText"
+                                               Foreground="{DynamicResource SuccessBrush}"
+                                               FontWeight="SemiBold"
+                                               Text="运行中" />
+                                </Border>
+                            </Grid>
+                        </Border>
                     </Border>
 
                     <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
@@ -181,8 +564,8 @@
                                                    Text="超过 10 个项目后，展开框内部滚动。" />
                                     </StackPanel>
                                     <Grid Grid.Column="1"
-                                          VerticalAlignment="Center"
-                                          Margin="18,0,0,0">
+                                          Margin="18,0,0,0"
+                                          VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="56" />
@@ -211,7 +594,7 @@
 
                     <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
                                Text="最近状态" />
-                    <Border Margin="0,8,0,0"
+                    <Border Margin="0,8,0,22"
                             Style="{StaticResource SettingsGroupStyle}">
                         <ScrollViewer MaxHeight="180"
                                       VerticalScrollBarVisibility="Auto">
@@ -228,251 +611,71 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </TabItem>
-
-        <TabItem Header="使用说明">
-            <ScrollViewer Padding="28,0,28,28"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel MaxWidth="820">
-                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
-                               Text="使用说明" />
-
-                    <TextBlock Margin="0,24,0,0"
-                               Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="操作方式" />
-                    <Border Margin="0,8,0,22"
-                            Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
-                            <Border Style="{StaticResource SettingsRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="1. 按住 Space" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="保持不放，作为展开手势的起点。" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SettingsRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="2. 按住鼠标左键并拖动" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="在桌面文件夹上拖动，超过阈值后展开第一层。" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SettingsLastRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="3. 继续对子文件夹拖动" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="在展开面板里的子文件夹上重复动作，就能继续级联展开下一层。" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </Border>
 
                     <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="功能特色" />
-                    <Border Margin="0,8,0,0"
-                            Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
-                            <Border Style="{StaticResource SettingsRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="桌面文件夹快速预览" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="不打开资源管理器，也能从桌面文件夹直接拉出内容面板。" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SettingsRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="多层级联展开" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="面板内的子文件夹支持继续拖动展开，适合顺着目录快速钻取。" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SettingsRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="方向感知布局" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="向左、向右、向上或向下拖动时，面板会尽量沿拖动方向展开。" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SettingsLastRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="托盘常驻与主题适配" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Style="{StaticResource CaptionTextStyle}"
-                                               Text="关闭主窗口后仍可在托盘运行，并支持浅色、深色和跟随系统。" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </TabItem>
-
-        <TabItem Header="外观">
-            <ScrollViewer Padding="28,0,28,28"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel MaxWidth="760">
-                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
-                               Text="外观" />
-
-                    <TextBlock Margin="0,24,0,0"
-                               Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="主题" />
+                               Text="应用信息" />
                     <Border Margin="0,8,0,22"
                             Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
-                            <Border Style="{StaticResource SettingsLastRowStyle}">
+                            <Border Style="{StaticResource SettingsRowStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="Folder Peek" />
+                                    <TextBlock x:Name="OtherVersionText"
+                                               Margin="0,3,0,0"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Text="版本 0.6.15.1" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsRowStyle}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="320" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"
-                                                   Text="原主题模式" />
-                                        <TextBlock x:Name="ThemeModeSummaryText"
-                                                   Margin="0,3,0,0"
+                                                   Text="运行数据位置" />
+                                        <TextBlock x:Name="OtherDataPathText"
+                                                   Margin="0,3,16,0"
                                                    Style="{StaticResource CaptionTextStyle}"
-                                                   Text="当前模式：跟随系统（当前浅色）" />
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="%LocalAppData%\FolderPeek" />
                                     </StackPanel>
-                                    <Border Grid.Column="1"
+                                    <Button Grid.Column="1"
                                             VerticalAlignment="Center"
-                                            Style="{StaticResource SegmentedControlChromeStyle}">
-                                        <UniformGrid Columns="3">
-                                            <RadioButton x:Name="ThemeFollowSystemButton"
-                                                         GroupName="ThemeMode"
-                                                         Checked="ThemeModeButton_OnChecked"
-                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
-                                                         Content="跟随系统" />
-                                            <RadioButton x:Name="ThemeLightButton"
-                                                         GroupName="ThemeMode"
-                                                         Checked="ThemeModeButton_OnChecked"
-                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
-                                                         Content="浅色" />
-                                            <RadioButton x:Name="ThemeDarkButton"
-                                                         GroupName="ThemeMode"
-                                                         Checked="ThemeModeButton_OnChecked"
-                                                         Style="{StaticResource SegmentedRadioButtonStyle}"
-                                                         Content="深色" />
-                                        </UniformGrid>
-                                    </Border>
+                                            Style="{StaticResource CompactCommandButtonStyle}"
+                                            Click="OpenDataFolderButton_OnClick"
+                                            Content="打开目录" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource SettingsLastRowStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   Text="开源项目" />
+                                        <TextBlock Margin="0,3,16,0"
+                                                   Style="{StaticResource CaptionTextStyle}"
+                                                   Text="MIT License · GitHub" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource CompactCommandButtonStyle}"
+                                            Click="OpenProjectPageButton_OnClick"
+                                            Content="查看项目" />
                                 </Grid>
                             </Border>
                         </StackPanel>
                     </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </TabItem>
 
-        <TabItem Header="开发">
-            <ScrollViewer Padding="28,0,28,28"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel MaxWidth="860">
-                    <TextBlock Style="{StaticResource SettingsPageHeaderStyle}"
-                               Text="开发" />
 
-                    <TextBlock Margin="0,24,0,0"
-                               Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="状态" />
-                    <Border Margin="0,8,0,22"
-                            Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
-                            <Border Style="{StaticResource SettingsRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="当前状态" />
-                                    <TextBlock x:Name="HookStateText"
-                                               Margin="0,6,0,0"
-                                               Text="监听状态：未启动" />
-                                    <TextBlock x:Name="TrackingStateText"
-                                               Margin="0,4,0,0"
-                                               Text="手势状态：空闲" />
-                                    <TextBlock x:Name="DirectionText"
-                                               Margin="0,4,0,0"
-                                               Text="方向：-" />
-                                    <TextBlock x:Name="DistanceText"
-                                               Margin="0,4,0,0"
-                                               Text="拖动距离：0 px" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SettingsLastRowStyle}">
-                                <StackPanel>
-                                    <TextBlock FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="手势起点" />
-                                    <TextBlock x:Name="FolderNameText"
-                                               Margin="0,6,0,0"
-                                               Text="名称：-" />
-                                    <TextBlock x:Name="FolderPathText"
-                                               Margin="0,4,0,0"
-                                               TextWrapping="Wrap"
-                                               Text="路径：-" />
-                                    <TextBlock x:Name="FolderSourceText"
-                                               Margin="0,4,0,0"
-                                               Text="来源：-" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="开发操作" />
-                    <Border Margin="0,8,0,22"
-                            Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
-                            <Button Style="{StaticResource SettingsCommandButtonStyle}"
-                                    Click="ClearLogButton_OnClick"
-                                    Content="清空日志" />
-                            <Button Style="{StaticResource SettingsCommandButtonStyle}"
-                                    Click="ShowDesktopInfoButton_OnClick"
-                                    Content="刷新桌面路径" />
-                            <Button Style="{StaticResource SettingsLastCommandButtonStyle}"
-                                    Click="ToggleListeningButton_OnClick"
-                                    Content="暂停/恢复" />
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Style="{StaticResource SettingsGroupTitleStyle}"
-                               Text="事件日志" />
-                    <Border Margin="0,8,0,0"
-                            Padding="12"
-                            Style="{StaticResource SettingsGroupStyle}">
-                        <ListBox x:Name="LogList"
-                                 MinHeight="280"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 FontFamily="Consolas"
-                                 FontSize="13"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ItemsSource="{Binding LogItems}" />
-                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

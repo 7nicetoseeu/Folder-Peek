@@ -25,6 +25,19 @@
     <sys:Double x:Key="ShadowOpacity">0.14</sys:Double>
     <sys:Double x:Key="ShadowBlurRadius">28</sys:Double>
 
+    <Style x:Key="KeyboardFocusVisualStyle">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="2"
+                            BorderBrush="{DynamicResource AccentBrush}"
+                            BorderThickness="2"
+                            CornerRadius="4" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <SolidColorBrush x:Key="PageBackgroundBrush" Color="#F3F5F8" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="SoftSurfaceBrush" Color="#F8FAFD" />
@@ -151,7 +164,7 @@
         <Setter Property="Background" Value="{DynamicResource SegmentBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="CornerRadius" Value="8" />
     </Style>
 
     <Style x:Key="StatusBadgeStyle" TargetType="Border">
@@ -163,7 +176,7 @@
 
     <Style x:Key="SettingsPageHeaderStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontSize" Value="24" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
@@ -184,7 +197,7 @@
     </Style>
 
     <Style x:Key="SettingsRowStyle" TargetType="Border">
-        <Setter Property="MinHeight" Value="64" />
+        <Setter Property="MinHeight" Value="60" />
         <Setter Property="Padding" Value="16,10" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
@@ -197,7 +210,7 @@
     </Style>
 
     <Style x:Key="SettingsCommandButtonStyle" TargetType="Button">
-        <Setter Property="MinHeight" Value="64" />
+        <Setter Property="MinHeight" Value="56" />
         <Setter Property="Padding" Value="16,10" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
@@ -205,6 +218,7 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -243,6 +257,7 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Stretch" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -269,32 +284,39 @@
         </Setter>
     </Style>
 
-    <Style x:Key="SettingsNavTabItemStyle" TargetType="TabItem">
-        <Setter Property="Margin" Value="0,1" />
-        <Setter Property="Padding" Value="10,10" />
-        <Setter Property="Width" Value="104" />
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-        <Setter Property="FontSize" Value="13.5" />
+    <Style x:Key="CompactCommandButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Padding" Value="13,8" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
-                <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="TabBorder"
-                            Height="40"
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonBorder"
+                            MinHeight="{TemplateBinding MinHeight}"
                             Padding="{TemplateBinding Padding}"
-                            Background="Transparent"
-                            CornerRadius="6">
-                        <ContentPresenter HorizontalAlignment="Stretch"
-                                          VerticalAlignment="Center"
-                                          ContentSource="Header" />
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource ControlCornerRadius}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBorderHoverBrush}" />
                         </Trigger>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                            <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -350,6 +372,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -426,31 +449,39 @@
     </Style>
 
     <Style x:Key="PageTabItemStyle" TargetType="TabItem">
-        <Setter Property="Margin" Value="0,0,8,0" />
-        <Setter Property="Padding" Value="18,9" />
+        <Setter Property="Height" Value="56" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+        <Setter Property="Padding" Value="16,0" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="TabBorder"
-                            Padding="{TemplateBinding Padding}"
-                            Background="{DynamicResource SoftSurfaceBrush}"
-                            BorderBrush="{StaticResource BorderBrushSoft}"
-                            BorderThickness="1"
-                            CornerRadius="{StaticResource ControlCornerRadius}"
-                            SnapsToDevicePixels="True">
-                        <ContentPresenter HorizontalAlignment="Center"
+                    <Grid Background="Transparent">
+                        <Border x:Name="HoverBackground"
+                                Margin="4,12"
+                                Background="Transparent"
+                                CornerRadius="{StaticResource ControlCornerRadius}" />
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
                                           ContentSource="Header" />
-                    </Border>
+                        <Border x:Name="SelectionIndicator"
+                                Height="2"
+                                Margin="12,0"
+                                VerticalAlignment="Bottom"
+                                Background="Transparent" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+                            <Setter TargetName="HoverBackground" Property="Background" Value="{DynamicResource TabHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                            <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource SurfaceBrush}" />
-                            <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentBorderHoverBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter TargetName="SelectionIndicator" Property="Background" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -461,6 +492,7 @@
     <Style x:Key="SegmentedRadioButtonStyle" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -495,6 +527,7 @@
     <Style x:Key="SwitchToggleStyle" TargetType="ToggleButton">
         <Setter Property="Width" Value="52" />
         <Setter Property="Height" Value="30" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">

@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace FolderPeek.App;
@@ -21,7 +24,11 @@ public partial class MainWindow : Window
 
         InitializeComponent();
         AppIconAssets.ApplyWindowIcon(this);
+        LoadPreviewImage(GuidePreviewImage, "gesture-guide.png");
+        LoadThemePreviewImages();
         DataContext = this;
+        OtherVersionText.Text = $"版本 {GetType().Assembly.GetName().Version?.ToString(4) ?? "未知"}";
+        OtherDataPathText.Text = AppStoragePaths.GetDataRootPath();
         _themeService.ThemeChanged += ThemeService_OnThemeChanged;
         SourceInitialized += (_, _) => ApplyWindowChromeStyle();
         SetHookState(false);
@@ -57,6 +64,7 @@ public partial class MainWindow : Window
         HomeStatusDetailText.Text = isEnabled
             ? "按住 Space，再按住鼠标左键拖动，就可以从桌面文件夹展开内容。"
             : "当前不会响应手势。你可以在这里或托盘里恢复监听。";
+        ToggleListeningButtonIcon.Text = isEnabled ? "\uE769" : "\uE768";
         ToggleListeningButtonLabel.Text = isEnabled ? "暂停监听" : "恢复监听";
     }
 
@@ -214,6 +222,25 @@ public partial class MainWindow : Window
         AddActivity($"展开框高度已设置为显示 {itemCount} 个项目。");
     }
 
+    private void GesturePreviewButton_OnChecked(object sender, RoutedEventArgs e)
+    {
+        if (GesturePreviewSummaryText is null)
+        {
+            return;
+        }
+
+        var gestureName = sender switch
+        {
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureMiddleDragButton) => "中键拖动",
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureContextMenuButton) => "融合进右键菜单",
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureLongPressLeftButton) => "长按左键",
+            System.Windows.Controls.RadioButton radioButton when ReferenceEquals(radioButton, GestureLongPressRightButton) => "长按右键",
+            _ => "中键拖动"
+        };
+
+        GesturePreviewSummaryText.Text = $"当前预览：{gestureName}。不会改变实际手势。";
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!_allowClose)
@@ -247,6 +274,37 @@ public partial class MainWindow : Window
     private void ClosePanelsButton_OnClick(object sender, RoutedEventArgs e)
     {
         ClosePanelsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OpenDataFolderButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dataPath = AppStoragePaths.GetDataRootPath();
+            Directory.CreateDirectory(dataPath);
+            Process.Start(new ProcessStartInfo(dataPath) { UseShellExecute = true });
+            AddActivity("已打开运行数据目录。");
+        }
+        catch (Exception ex)
+        {
+            AddActivity($"无法打开运行数据目录：{ex.Message}");
+        }
+    }
+
+    private void OpenProjectPageButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://github.com/7nicetoseeu/Folder-Peek")
+            {
+                UseShellExecute = true
+            });
+            AddActivity("已打开 GitHub 项目页面。");
+        }
+        catch (Exception ex)
+        {
+            AddActivity($"无法打开项目页面：{ex.Message}");
+        }
     }
 
     private void ThemeService_OnThemeChanged(object? sender, EventArgs e)
@@ -324,5 +382,35 @@ public partial class MainWindow : Window
     {
         DwmWindowStyler.ApplyMainWindowStyle(this, _themeService);
         Background = GetBrush("PageBackgroundBrush");
+    }
+
+    private void LoadThemePreviewImages()
+    {
+        LoadPreviewImage(DarkThemePreviewImage, "effect.png");
+        LoadPreviewImage(LightThemePreviewImage, "effect-light.png");
+    }
+
+    private static void LoadPreviewImage(System.Windows.Controls.Image image, string fileName)
+    {
+        var imagePath = Path.Combine(AppContext.BaseDirectory, "Assets", fileName);
+        if (!File.Exists(imagePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(imagePath, UriKind.Absolute);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            image.Source = bitmap;
+        }
+        catch
+        {
+            // Keep the lightweight placeholder when a preview cannot be loaded.
+        }
     }
 }
